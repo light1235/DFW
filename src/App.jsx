@@ -13,6 +13,7 @@ import {Vector2} from "three";
 import {ScrollCameraPath} from "./components/canvas/ViewportCanvas.jsx";
 import {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.jsx";
 import {VHSScreenGlitchR3F} from "./components/canvas/TransitionShader.jsx";
+import {MatrixRainScreenR3F} from "./components/canvas/TranisitionMatrixShader.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
