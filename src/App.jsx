@@ -8,10 +8,11 @@ import {EffectComposer, Bloom, Noise, ChromaticAberration} from '@react-three/po
 import { BlendFunction } from 'postprocessing';
 
 import * as THREE from 'three'
-import {Suspense, useRef} from "react";
+import {Suspense, useEffect, useRef, useState} from "react";
 import {Vector2} from "three";
 import {ScrollCameraPath} from "./components/canvas/ViewportCanvas.jsx";
 import {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.jsx";
+import {VHSScreenGlitchR3F} from "./components/canvas/TransitionShader.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -42,6 +43,17 @@ function Lights() {
 
 
 export default function App() {
+     const [loading, setLoading] = useState(true);
+
+     // Имитация загрузки ресурсов (например 3 секунды)
+     useEffect(() => {
+          const timer = setTimeout(() => {
+               setLoading(false); // Запускаем 0.7s плавающий fade-out
+          }, 3000);
+
+          return () => clearTimeout(timer);
+     }, []);
+
   return (
     <div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>
       <HeaderSection />
@@ -55,6 +67,13 @@ export default function App() {
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
         <Scene1 />
+           {/*<VHSScreenGlitchR3F*/}
+           {/*     active={loading}*/}
+           {/*     duration={2.5}*/}
+           {/*     fadeDuration={0.1}*/}
+           {/*     intensity={1.0}*/}
+           {/*     onFinished={() => console.log('Заставка полностью исчезла!')}*/}
+           {/*/>*/}
            <PortalToSceneTwo />
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
