@@ -35,16 +35,17 @@ function Model() {
 
      return (
           <Float
-               position={[-2.5, 1.25, 0.5]}
-               rotation={[0, 0.6, 0]}
-               speed={2.5}
-               rotationIntensity={2}
-               floatIntensity={3}
+               floatingRange={[-0.2, 0.2]} // Движение строго вверх/вниз относительно центра
+               speed={1.5}                 // Скорость движения
+               floatIntensity={1}          // Множитель высоты плавания
+               rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-          <mesh position={[0, 0, 0]}>
-               <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
-          </mesh>
+               <mesh position={[-3, -0.5, 5]}>
+                    <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
+               </mesh>
           </Float>
+
+
      );
 }
 
@@ -70,18 +71,54 @@ function Model1() {
 
      return (
           <Float
-               position={[-2.5, 1.25, 0.5]}
+               position={[-2.5, 0.5, 0.5]}
                rotation={[0, 0.6, 0]}
-               speed={2.5}
-               rotationIntensity={2}
-               floatIntensity={3}
+               speed={1.5}
+               rotationIntensity={1}
+               floatIntensity={1}
           >
-               <mesh position={[3, 0, -1.5]}>
+               <mesh position={[3, 1, 4.5]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
                </mesh>
           </Float>
      );
 }
+
+function Model2() {
+     const { scene } = useGLTF('/model/scene2/Concrete.glb');
+     const [matcapTexture] = useMatcapTexture('9B9994_E1E0DB_474643_544C4C', 1024);
+
+     // 2. Створюємо новий MatCap матеріал
+     const matcapMaterial = useMemo(() => {
+          return new THREE.MeshMatcapMaterial({
+               matcap: matcapTexture,
+          });
+     }, [matcapTexture]);
+
+     // 3. Проходимо по всій моделі та замінюємо старі матеріали на наш MatCap
+     useMemo(() => {
+          scene.traverse((child) => {
+               if (child.isMesh) {
+                    child.material = matcapMaterial;
+               }
+          });
+     }, [scene, matcapMaterial]);
+
+     return (
+          <Float
+               position={[-2.5, 0.5, 0.5]}
+               rotation={[0, 0.6, 0]}
+               speed={1.5}
+               rotationIntensity={1}
+               floatIntensity={1}
+          >
+               <mesh position={[0, 1, 4.5]}>
+                    <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
+               </mesh>
+          </Float>
+     );
+}
+
 
 
 const SceneTwo = () => {
@@ -92,20 +129,29 @@ const SceneTwo = () => {
                <color attach="background" args={['#1a1a2e']} />
                <Model />
                <Model1 />
+               <Model2 />
                {/*<mesh position={[0, 0, 0]}>*/}
                {/*     <torusKnotGeometry args={[0.4, 0.3, 10, 2]} />*/}
                {/*     <meshStandardMaterial color="hotpink" roughness={0.1} />*/}
                {/*</mesh>*/}
-               <mesh>
-                    <icosahedronGeometry />
-                    <meshPhysicalMaterial
-                         roughness={0}
-                         metalness={0}
-                         thickness={3.12}
-                         ior={1.74}
-                         transmission={1.0}
-                    />
+               {/*<mesh>*/}
+               {/*     <icosahedronGeometry />*/}
+               {/*     <meshPhysicalMaterial*/}
+               {/*          roughness={0}*/}
+               {/*          metalness={0}*/}
+               {/*          thickness={3.12}*/}
+               {/*          ior={1.74}*/}
+               {/*          transmission={1.0}*/}
+               {/*     />*/}
+               {/*</mesh>*/}
+               <mesh rotation={[-Math.PI / 2.2, 0, 0]} position={[0, 0, 0]}>
+                    {/* аргументы [ширина, высота, сегменты_по_ширине, сегменты_по_высоте] */}
+                    <planeGeometry args={[1.8, 24, 1, 1]} />
+
+                    {/* Материал плоскости, например, двусторонний синий */}
+                    <meshStandardMaterial color="royalblue" side={2} />
                </mesh>
+
 
           </>
      );
@@ -126,7 +172,7 @@ export function PortalToSceneTwo() {
                >
                     {/* Внутренняя камера портала НЕ должна быть дефолтной на старте */}
                      <PerspectiveCamera makeDefault position={[0, 0, 10]} />
-                    <OrbitControls />
+                    {/*<OrbitControls />*/}
                     {/* Цвет фона остаётся, но теперь он заперт ВНУТРИ портала */}
                     <color attach="background" args={['#1a1a2e']} />
 
