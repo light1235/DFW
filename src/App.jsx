@@ -11,7 +11,7 @@ import * as THREE from 'three'
 import {Suspense, useEffect, useRef, useState} from "react";
 import {Vector2} from "three";
 import {ScrollCameraPath} from "./components/canvas/ViewportCanvas.jsx";
-import {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.jsx";
+import Scene2, {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.jsx";
 import {VHSScreenGlitchR3F} from "./components/canvas/TransitionShader.jsx";
 import {MatrixRainScreenR3F} from "./components/canvas/TranisitionMatrixShader.jsx";
 
@@ -68,12 +68,18 @@ export default function App() {
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
         <Scene1 />
+           {/*<Scene2 />*/}
            {/*<VHSScreenGlitchR3F*/}
            {/*     active={loading}*/}
            {/*     duration={2.5}*/}
            {/*     fadeDuration={0.1}*/}
            {/*     intensity={1.0}*/}
            {/*     onFinished={() => console.log('Заставка полностью исчезла!')}*/}
+           {/*/>*/}
+           {/*<MatrixRainScreenR3F*/}
+           {/*     active={loading}*/}
+           {/*     fadeDuration={0.7}*/}
+           {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
            {/*/>*/}
            <PortalToSceneTwo />
         <EffectComposer>
