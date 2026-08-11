@@ -2,7 +2,7 @@ import './App.css';
 import {Canvas} from '@react-three/fiber';
 import SceneManager from './components/canvas/SceneManager.jsx';
 import HeaderSection from './components/dom/HeaderSection.jsx';
-import {Environment, OrbitControls, Texture, useHelper,} from "@react-three/drei";
+import {Environment, Fisheye, OrbitControls, Texture, useHelper,} from "@react-three/drei";
 import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
 import {EffectComposer, Bloom, Noise, ChromaticAberration, Scanline} from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
@@ -73,7 +73,7 @@ export default function App() {
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
         {/*<Scene1 />*/}
-        {/*   <Scene2 />*/}
+           <Scene2 />
         {/*   <VHSScreenGlitchR3F*/}
         {/*        active={loading}*/}
         {/*        duration={2.5}*/}
@@ -87,7 +87,9 @@ export default function App() {
            {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
            {/*/>*/}
            <PortalToSceneTwo />
-           {/*<GoldenTwilightScene />*/}
+           {/*     <GoldenTwilightScene />*/}
+
+
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
             luminanceSmoothing={0.5} mipmapBlur />

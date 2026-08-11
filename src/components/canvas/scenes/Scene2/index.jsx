@@ -44,7 +44,7 @@ function Model() {
                floatIntensity={1}          // Множитель высоты плавания
                rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-               <mesh position={[-3, -0.5, 5]}>
+               <mesh position={[-2.4, -1.2, 5.2]} rotation={[1+ Math.PI/ 2,0,1+ Math.PI/ 2]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
                </mesh>
           </Float>
@@ -75,13 +75,12 @@ function Model1() {
 
      return (
           <Float
-               position={[-2.5, 0.5, 0.5]}
-               rotation={[0, 0.6, 0]}
-               speed={1.5}
-               rotationIntensity={1}
-               floatIntensity={1}
+               floatingRange={[-0.2, 0.2]} // Движение строго вверх/вниз относительно центра
+               speed={1.5}                 // Скорость движения
+               floatIntensity={1}          // Множитель высоты плавания
+               rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-               <mesh position={[3, 1, 4.5]}>
+               <mesh position={[3, -1, 4.5]} rotation={[6.4+ Math.PI / 20, 5+ Math.PI / 24, 4.8+ Math.PI / 2]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
                </mesh>
           </Float>
@@ -110,13 +109,12 @@ function Model2() {
 
      return (
           <Float
-               position={[-2.5, 0.5, 0.5]}
-               rotation={[0, 0.6, 0]}
-               speed={1.5}
-               rotationIntensity={1}
-               floatIntensity={1}
+               floatingRange={[-0.2, 0.2]} // Движение строго вверх/вниз относительно центра
+               speed={1.2}                 // Скорость движения
+               floatIntensity={1.2}          // Множитель высоты плавания
+               rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-               <mesh position={[0, 1, 4.5]}>
+               <mesh position={[2, 1, 4.5]} rotation={[5.2+ Math.PI / 2,5.2+ Math.PI / 2,5+ Math.PI / 2]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
 
                </mesh>
@@ -147,14 +145,13 @@ function Model3() {
 
      return (
           <Float
-               position={[-4.5, 0.5, 0.5]}
-               rotation={[0, 0.6, 0]}
-               speed={1.5}
-               rotationIntensity={1}
-               floatIntensity={1}
+               floatingRange={[-0.2, 0.2]} // Движение строго вверх/вниз относительно центра
+               speed={1.2}                 // Скорость движения
+               floatIntensity={1.2}          // Множитель высоты плавания
+               rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-               <mesh position={[0, 1, 4.5]}>
-                    <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
+               <mesh position={[-2.8, .9, 5.5]} rotation={[0.4,4.2,0]}>
+                    <primitive object={scene} scale={1.2} position={[0, 0, 0]} />
 
                </mesh>
 
@@ -184,13 +181,12 @@ function Model4() {
 
      return (
           <Float
-               position={[-5.8, 0.5, 0.5]}
-               rotation={[0, 0.6, 0]}
-               speed={1.5}
-               rotationIntensity={1}
-               floatIntensity={1}
+               floatingRange={[-0.2, 0.2]} // Движение строго вверх/вниз относительно центра
+               speed={1.2}                 // Скорость движения
+               floatIntensity={1.2}          // Множитель высоты плавания
+               rotationIntensity={0.3}       // ОТКЛЮЧАЕТ круговое вращение (объект не делает круг)
           >
-               <mesh position={[0, 1, 4.5]}>
+               <mesh position={[-1.5, 1, 4.5]} rotation={[0.5,1+Math.PI / 2,0.2]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
 
                </mesh>
@@ -314,32 +310,7 @@ const SceneTwo = () => {
                {/*          transmission={1.0}*/}
                {/*     />*/}
                {/*</mesh>*/}
-               {/*<mesh rotation={[-Math.PI / 2.2, 0, 0]} position={[0, 0, 0]}>*/}
-               {/*     /!* аргументы [ширина, высота, сегменты_по_ширине, сегменты_по_высоте] *!/*/}
-               {/*     <planeGeometry args={[1.8, 24, 1, 1]} />*/}
-
-               {/*     <meshStandardMaterial color="royalblue" side={2} />*/}
-               {/*</mesh>*/}
                <OrbitControls />
-               {/*<mesh rotation={[-Math.PI / 2.2, 0, 0]} position={[0, 0, 0]}>*/}
-               {/*     <planeGeometry args={[1.8, boardLength, 1, 1]} />*/}
-               {/*     <meshStandardMaterial color="royalblue" side={2} opacity={0.1} transparent />*/}
-
-               {/*     /!* Група з картинками, яка наслідує поворот дошки *!/*/}
-               {/*     <group ref={groupRef}>*/}
-               {/*          {textures.map((texture, index) => {*/}
-               {/*               // Рівномірно розподіляємо картинки по довжині дошки*/}
-               {/*               const initialY = (index * itemHeight) - (boardLength / 2) + (itemHeight / 2);*/}
-
-               {/*               return (*/}
-               {/*                    <mesh key={index} position={[0, initialY, 0.01]}>*/}
-               {/*                         <planeGeometry args={[1.8, itemHeight]} />*/}
-               {/*                         <meshStandardMaterial map={texture} side={2} />*/}
-               {/*                    </mesh>*/}
-               {/*               );*/}
-               {/*          })}*/}
-               {/*     </group>*/}
-               {/*</mesh>*/}
                <ConveyorBelt />
 
           </>
@@ -367,7 +338,6 @@ export function PortalToSceneTwo() {
 
                     {/*<ambientLight intensity={1.5} />*/}
                          <SceneTwo />
-
 
                </MeshPortalMaterial>
           </mesh>
