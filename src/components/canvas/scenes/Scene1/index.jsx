@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, {useRef, useMemo, useState} from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import FlagText from "./text.jsx";
@@ -196,16 +196,19 @@ const EtherealCosmicVeil = () => {
     []
   );
 
-  useFrame((state, delta) => {
+
+
+     useFrame((state, delta) => {
     if (materialRef.current) {
       materialRef.current.uniforms.uTime.value += delta;
     }
+
   });
 
   return (
     <>
          {/*<CameraParallax intensity={1} factor={0.05} />*/}
-      <group position={[-6, 6, 16]} rotation={[-0.1, 0, 0]}>
+      <group position={[-6, 5, 16]} rotation={[-0.1, 0, 0]}>
         <FlagText />
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]}>

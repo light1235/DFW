@@ -69,24 +69,24 @@ export default function App() {
         <color attach="background" args={['#1a1a1a']} />
            <fog attach="fog" args={['#1a1a1a', 15, 80]} />
         {/*<fog attach="fog" args={['#1a1a1a', 15, 50]} />*/}
-        {/*<OrbitControls />*/}
+        <OrbitControls />
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
-        <Scene1 />
+        {/*<Scene1 />*/}
         {/*   <Scene2 />*/}
-           {/*<VHSScreenGlitchR3F*/}
-           {/*     active={loading}*/}
-           {/*     duration={2.5}*/}
-           {/*     fadeDuration={0.1}*/}
-           {/*     intensity={1.0}*/}
-           {/*     onFinished={() => console.log('Заставка полностью исчезла!')}*/}
-           {/*/>*/}
+        {/*   <VHSScreenGlitchR3F*/}
+        {/*        active={loading}*/}
+        {/*        duration={2.5}*/}
+        {/*        fadeDuration={0.1}*/}
+        {/*        intensity={1.0}*/}
+        {/*        onFinished={() => console.log('Заставка полностью исчезла!')}*/}
+        {/*   />*/}
            {/*<MatrixRainScreenR3F*/}
            {/*     active={loading}*/}
            {/*     fadeDuration={0.7}*/}
            {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
            {/*/>*/}
-           {/*<PortalToSceneTwo />*/}
+           <PortalToSceneTwo />
            {/*<GoldenTwilightScene />*/}
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
@@ -100,10 +100,6 @@ export default function App() {
              <ChromaticAberration
                   offset={new Vector2(0.001, 0.001)} // Сдвиг красного и синего каналов
              />
-             {/*<Scanline*/}
-             {/*     blendFunction={BlendFunction.OVERLAY} // blend mode*/}
-             {/*     density={1.25} // scanline density*/}
-             {/*/>*/}
         </EffectComposer>
       </Canvas>
 
