@@ -220,15 +220,6 @@ const EtherealCosmicVeil = () => {
           side={THREE.DoubleSide}
         />
            <SmartRectLight />
-           {/*<ConeLaser*/}
-           {/*     radius={0.3}*/}
-           {/*     height={14.0}*/}
-           {/*     thetaLength={6.6}*/}
-           {/*     emissiveIntensity={3.5}*/}
-           {/*     speed={1.0}*/}
-           {/*     position={[-10, 9.2, 6.8]}*/}
-           {/*     rotation={[40, 100, Math.PI / 1.67]}*/}
-           {/*/>*/}
            <ConeLaser
                 radius={0.3}
                 height={21.0}

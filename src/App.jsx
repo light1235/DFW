@@ -4,16 +4,17 @@ import SceneManager from './components/canvas/SceneManager.jsx';
 import HeaderSection from './components/dom/HeaderSection.jsx';
 import {Environment, OrbitControls, Texture, useHelper,} from "@react-three/drei";
 import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
-import {EffectComposer, Bloom, Noise, ChromaticAberration} from '@react-three/postprocessing';
+import {EffectComposer, Bloom, Noise, ChromaticAberration, Scanline} from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 
 import * as THREE from 'three'
-import {Suspense, useEffect, useRef, useState} from "react";
+import React, {Suspense, useEffect, useRef, useState} from "react";
 import {Vector2} from "three";
 import {ScrollCameraPath} from "./components/canvas/ViewportCanvas.jsx";
 import Scene2, {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.jsx";
 import {VHSScreenGlitchR3F} from "./components/canvas/TransitionShader.jsx";
 import {MatrixRainScreenR3F} from "./components/canvas/TranisitionMatrixShader.jsx";
+import GoldenTwilightScene from "./components/canvas/scenes/Scene4/index.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -59,16 +60,20 @@ export default function App() {
     <div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>
       <HeaderSection />
       {/* Фиксированный Canvas для 4 сцен */}
-      <Canvas className="fixed-canvas" camera={{ position: [0, 10, 45], fov: 30 }}>
+      <Canvas className="fixed-canvas"
+              camera={{ position: [0, 10, 45], fov: 30 }}
+              shadows
+              gl={{ antialias: true, toneMappingExposure: 1.15 }}
+      >
         {/*<SceneManager />*/}
         <color attach="background" args={['#1a1a1a']} />
            <fog attach="fog" args={['#1a1a1a', 15, 80]} />
         {/*<fog attach="fog" args={['#1a1a1a', 15, 50]} />*/}
-        <OrbitControls />
+        {/*<OrbitControls />*/}
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
         <Scene1 />
-           {/*<Scene2 />*/}
+        {/*   <Scene2 />*/}
            {/*<VHSScreenGlitchR3F*/}
            {/*     active={loading}*/}
            {/*     duration={2.5}*/}
@@ -81,7 +86,8 @@ export default function App() {
            {/*     fadeDuration={0.7}*/}
            {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
            {/*/>*/}
-           <PortalToSceneTwo />
+           {/*<PortalToSceneTwo />*/}
+           {/*<GoldenTwilightScene />*/}
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
             luminanceSmoothing={0.5} mipmapBlur />
@@ -94,6 +100,10 @@ export default function App() {
              <ChromaticAberration
                   offset={new Vector2(0.001, 0.001)} // Сдвиг красного и синего каналов
              />
+             {/*<Scanline*/}
+             {/*     blendFunction={BlendFunction.OVERLAY} // blend mode*/}
+             {/*     density={1.25} // scanline density*/}
+             {/*/>*/}
         </EffectComposer>
       </Canvas>
 

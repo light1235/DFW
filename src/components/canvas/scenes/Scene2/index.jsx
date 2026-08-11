@@ -1,13 +1,17 @@
-import React, {useMemo} from 'react';
+import React, {Suspense, useMemo} from 'react';
 import {
      Float,
      MeshPortalMaterial,
      OrbitControls,
-     PerspectiveCamera,
+     PerspectiveCamera, Sparkles, Stars,
      useMatcapTexture
 } from "@react-three/drei";
 import { useGLTF, Environment } from '@react-three/drei';
 import * as THREE from "three";
+import {Bloom, ChromaticAberration, DotScreen, EffectComposer, Noise, Scanline} from "@react-three/postprocessing";
+import {BlendFunction} from "postprocessing";
+import {Vector2} from "three";
+
 // 9B9994_E1E0DB_474643_544C4C
 // 323C4D_B79039_7C6A44_605C48
 // 75723E_C0C3A0_2A1E0E_AFAE77
@@ -114,7 +118,9 @@ function Model2() {
           >
                <mesh position={[0, 1, 4.5]}>
                     <primitive object={scene} scale={1.5} position={[0, 0, 0]} />
+
                </mesh>
+
           </Float>
      );
 }
@@ -130,6 +136,8 @@ const SceneTwo = () => {
                <Model />
                <Model1 />
                <Model2 />
+               <Stars radius={100} depth={50} count={5000} factor={4} saturation={2} fade speed={3} />
+
                {/*<mesh position={[0, 0, 0]}>*/}
                {/*     <torusKnotGeometry args={[0.4, 0.3, 10, 2]} />*/}
                {/*     <meshStandardMaterial color="hotpink" roughness={0.1} />*/}
@@ -152,6 +160,13 @@ const SceneTwo = () => {
                     <meshStandardMaterial color="royalblue" side={2} />
                </mesh>
 
+               {/*<EffectComposer>*/}
+
+               {/*     <Scanline*/}
+               {/*          blendFunction={BlendFunction.OVERLAY} // blend mode*/}
+               {/*          density={1.25} // scanline density*/}
+               {/*     />*/}
+               {/*</EffectComposer>*/}
 
           </>
      );
