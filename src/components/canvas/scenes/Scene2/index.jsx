@@ -12,6 +12,7 @@ import {Bloom, ChromaticAberration, DotScreen, EffectComposer, Noise, Scanline} 
 import {BlendFunction} from "postprocessing";
 import {TextureLoader, Vector2} from "three";
 import {useFrame, useLoader} from "@react-three/fiber";
+import {CameraParallax} from "../Scene1/index.jsx";
 
 // 9B9994_E1E0DB_474643_544C4C
 // 323C4D_B79039_7C6A44_605C48
@@ -310,8 +311,30 @@ const SceneTwo = () => {
                {/*          transmission={1.0}*/}
                {/*     />*/}
                {/*</mesh>*/}
+               {/*<CameraParallax intensity={0.3} factor={0.05} />*/}
                <OrbitControls />
                <ConveyorBelt />
+               <mesh position={[0, -0.5, -45]}>
+                    <circleGeometry args={[18, 32]} />
+                    <meshBasicMaterial
+                         color="#0088cc"                   // 👈 Яркий голубой цвет свечения
+                         transparent={true}
+                         opacity={0.35}                    // 👈 Прозрачность
+                         blending={THREE.AdditiveBlending} // 👈 Режим свечения!
+                         depthWrite={false}                // 👈 Не блокирует задний план
+                    />
+               </mesh>
+
+               {/* 2. Тонкая контурная орбита (кольцо) */}
+               <mesh position={[0, -0.5, -44]}>
+                    <ringGeometry args={[10, 10.3, 32]} />
+                    <meshBasicMaterial
+                         color={'black'}
+                         transparent
+                         opacity={0.4}
+                    />
+               </mesh>
+               <fog attach="fog" args={['#031427', 10, 55]} />
 
           </>
      );
@@ -334,7 +357,7 @@ export function PortalToSceneTwo() {
                      <PerspectiveCamera makeDefault position={[0, 0, 10]} />
                     {/*<OrbitControls />*/}
                     {/* Цвет фона остаётся, но теперь он заперт ВНУТРИ портала */}
-                    <color attach="background" args={['#1a1a2e']} />
+                    {/*<color attach="background" args={['#1a1a2e']} />*/}
 
                     {/*<ambientLight intensity={1.5} />*/}
                          <SceneTwo />
