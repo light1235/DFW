@@ -43,3 +43,6 @@
 .read-the-docs7 {
   color: lightyellow;
 }
+html, body {
+  overflow-x: hidden;
+}

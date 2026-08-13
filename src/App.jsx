@@ -1,10 +1,8 @@
 import './App.css';
 import {Canvas} from '@react-three/fiber';
-import SceneManager from './components/canvas/SceneManager.jsx';
 import HeaderSection from './components/dom/HeaderSection.jsx';
 import {Environment, Fisheye, OrbitControls, Texture, useHelper,} from "@react-three/drei";
-import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
-import {EffectComposer, Bloom, Noise, ChromaticAberration, Scanline} from '@react-three/postprocessing';
+import {EffectComposer, Bloom, Noise, ChromaticAberration, Scanline, DotScreen} from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 
 import * as THREE from 'three'
@@ -15,6 +13,8 @@ import Scene2, {PortalToSceneTwo} from "./components/canvas/scenes/Scene2/index.
 import {VHSScreenGlitchR3F} from "./components/canvas/TransitionShader.jsx";
 import {MatrixRainScreenR3F} from "./components/canvas/TranisitionMatrixShader.jsx";
 import GoldenTwilightScene from "./components/canvas/scenes/Scene4/index.jsx";
+import InteractivePoster from "./components/canvas/scenes/Scene5/index.jsx";
+import Scene6 from "./components/canvas/scenes/Scene6/index.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -69,11 +69,12 @@ export default function App() {
         <color attach="background" args={['#1a1a1a']} />
            <fog attach="fog" args={['#1a1a1a', 15, 80]} />
         {/*<fog attach="fog" args={['#1a1a1a', 15, 50]} />*/}
-        <OrbitControls />
+        {/*<OrbitControls />*/}
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
         {/*<Scene1 />*/}
-           <Scene2 />
+           <Scene6 />
+        {/*   <Scene2 />*/}
         {/*   <VHSScreenGlitchR3F*/}
         {/*        active={loading}*/}
         {/*        duration={2.5}*/}
@@ -86,9 +87,10 @@ export default function App() {
            {/*     fadeDuration={0.7}*/}
            {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
            {/*/>*/}
-           <PortalToSceneTwo />
+           {/*<PortalToSceneTwo />*/}
            {/*     <GoldenTwilightScene />*/}
 
+          {/*<InteractivePoster />*/}
 
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
@@ -99,6 +101,15 @@ export default function App() {
                   // 2. Використовуємо blendFunction замість blendMode
                   blendFunction={BlendFunction.NORMAL}
              />
+             {/*<DotScreen*/}
+             {/*     blendFunction={BlendFunction.NORMAL} // blend mode*/}
+             {/*     angle={Math.PI * 0.5} // angle of the dot pattern*/}
+             {/*     scale={1.0} // scale of the dot pattern*/}
+             {/*/>*/}
+             {/*<Scanline*/}
+             {/*     blendFunction={BlendFunction.OVERLAY} // blend mode*/}
+             {/*     density={1.25} // scanline density*/}
+             {/*/>*/}
              <ChromaticAberration
                   offset={new Vector2(0.001, 0.001)} // Сдвиг красного и синего каналов
              />
@@ -111,7 +122,11 @@ export default function App() {
       {/* Нативный HTML-контент */}
       <main className="html-content">
         {/*<ContentSection />*/}
+        {/*   <InteractivePoster />*/}
       </main>
+         {/*<div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>*/}
+
+         {/*</div>*/}
     </div>
   );
 }
