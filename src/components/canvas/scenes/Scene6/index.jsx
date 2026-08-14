@@ -8,6 +8,11 @@ import {OrbitControls, PerspectiveCamera, useGLTF} from "@react-three/drei";
 import FlagText from "../Scene1/text.jsx";
 import ContactText from "./contact-text.jsx";
 import {MathUtils} from "three";
+import {ModelTruck} from "./Truck.jsx";
+
+
+
+
 
 
 export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
@@ -331,7 +336,9 @@ const Scene6 = () => {
                     <SmartRectLight />
                </mesh>
                {/*<OrbitControls />*/}
-               <Model />
+               {/*<Model />*/}
+               <ModelTruck />
+
                <ModelLetter
                />
                <PerspectiveCamera
