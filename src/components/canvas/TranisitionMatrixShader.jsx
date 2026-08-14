@@ -63,7 +63,8 @@ const MatrixRainShader = {
       float head = step(grid.y - 1.2, yPos);
       
       // Зеленый цвет матрицы
-      vec3 matrixGreen = vec3(0.05, 0.9, 0.35);
+      vec3 matrixGreen = vec3(0.76, 0.56, 0.37);
+      // vec3 matrixGreen = vec3(0.05, 0.9, 0.35);
       vec3 headWhite = vec3(0.8, 1.0, 0.85);
 
       vec3 color = mix(matrixGreen * glyph * pow(trail, 2.5), headWhite * glyph, head);

@@ -55,9 +55,9 @@ export default function App() {
 
           return () => clearTimeout(timer);
      }, []);
-
+// #0A0015
   return (
-    <div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>
+    <div className="main-wrapper" style={{ height: '100vh', width: '100vw',background: '#0A0015',overflowY: 'auto',overflowX: 'hidden', position:'relative'  }}>
       <HeaderSection />
       {/* Фиксированный Canvas для 4 сцен */}
       <Canvas className="fixed-canvas"
@@ -82,11 +82,11 @@ export default function App() {
         {/*        intensity={1.0}*/}
         {/*        onFinished={() => console.log('Заставка полностью исчезла!')}*/}
         {/*   />*/}
-           {/*<MatrixRainScreenR3F*/}
-           {/*     active={loading}*/}
-           {/*     fadeDuration={0.7}*/}
-           {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
-           {/*/>*/}
+        {/*   <MatrixRainScreenR3F*/}
+        {/*        active={loading}*/}
+        {/*        fadeDuration={0.7}*/}
+        {/*        onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
+        {/*   />*/}
            {/*<PortalToSceneTwo />*/}
            {/*     <GoldenTwilightScene />*/}
 

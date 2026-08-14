@@ -95,8 +95,60 @@ function Model() {
      return <primitive object={scene}  scale={15} position={[0, 2.9, 0]} rotation={[0,1,0]} />;
 }
 
+function ModelLetter() {
+     // Шлях вказується від папки public
+     const { scene } = useGLTF('model/letter.glb');
+     // Стан для відстеження наведення
+     const [hovered, setHovered] = useState(false);
 
-// scale={15} position={[0, 2.9, 0]} rotation={[0,1,0]}
+     // Проходимо по всіх полігонах моделі та змінюємо їхні матеріали
+     scene.traverse((child) => {
+          if (child.isMesh) {
+               // Зберігаємо стару текстуру, якщо вона була
+               const originalTexture = child.material.map;
+
+               // Замінюємо матеріал на базовий (який не потребує світла)
+               child.material = new THREE.MeshBasicMaterial({
+                    map: originalTexture,             // Повертаємо текстуру моделі
+                    color: child.material.color,     // Зберігаємо оригінальний колір
+               });
+          }
+     });
+     const handleModelClick = (e) => {
+          e.stopPropagation(); // Запобігаємо кліку на об'єкти позаду моделі
+          window.location.href = "mailto:info@doka.com";
+     };
+     // Ефект для зміни курсора миші
+     useEffect(() => {
+          // Якщо навели — ставимо кастомний курсор, якщо прибрали — стандартний
+          document.body.style.cursor = hovered ? "url('/cursor-mini.png'), auto" : "auto";
+
+          // Важливо: скидаємо курсор при розмонтуванні компонента
+          return () => {
+               document.body.style.cursor = "auto";
+          };
+     }, [hovered]);
+
+     return (
+          <primitive
+               object={scene}
+               scale={8}
+               position={[-6, 0.0, 6]}
+               rotation={[0, 1, 0]}
+               // Події миші
+               onPointerOver={(e) => {
+                    e.stopPropagation(); // Зупиняємо проходження променя крізь модель
+                    setHovered(true);
+               }}
+               onPointerOut={(e) => {
+                    setHovered(false);
+               }}
+               onClick={handleModelClick}
+          />
+     );
+}
+
+
 const Scene6 = () => {
      const materialRef = useRef();
 
@@ -259,7 +311,7 @@ const Scene6 = () => {
      const rotZ = MathUtils.degToRad(-39.9)
 
      return (
-          <>
+          <> return
                <CameraParallax intensity={1} factor={0.05} />
                <group position={[6, 5, 12]} rotation={[-0.1, 4.9, 0]}>
                     <ContactText />
@@ -280,23 +332,16 @@ const Scene6 = () => {
                </mesh>
                {/*<OrbitControls />*/}
                <Model />
+               <ModelLetter
+               />
                <PerspectiveCamera
                     makeDefault
                     position={[-26.11, 13.51, 10.96]}
                     rotation={[rotX, rotY, rotZ]}
                />
-                    {/*<PerspectiveCamera makeDefault position={[-26.11, 13.51, 10.96]} rotation={[-45.8, -54.2, -39.9]} />*/}
           </>
 
      );
 };
 
 export default Scene6;
-// Position: [-48.32, 25.00, 24.28]
-// Rotation (deg): [-45.8, -54.2, -39.9]
-// LookAt target: [-47.51, 24.58, 23.87]
-
-// 239index.jsx:63 [Camera]
-// Position: [-26.11, 13.51, 10.96]
-// Rotation (deg): [-51.0, -56.3, -45.7]
-// LookAt target: [-25.28, 13.08, 10.61]
