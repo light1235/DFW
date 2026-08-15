@@ -1,31 +1,30 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrthographicCamera, ScrollControls, useScroll } from '@react-three/drei';
+import { OrthographicCamera } from '@react-three/drei';
 
-// ==========================================
-// 1. КОНФИГУРАЦИЯ И НАСТРОЙКИ ЦВЕТА И СЦЕНЫ
-// ==========================================
+// =========================================================
+// 1. КОНФИГУРАЦИЯ И НАСТРОЙКИ (ЦВЕТА, ТЕКСТ, ИЗОБРАЖЕНИЯ)
+// =========================================================
 const CONFIG = {
      bgColor: '#000000',
-     duotoneYellow: '#E2C84B', // Основной цвет (например: '#E2C84B' - желтый, '#0066FF' - синий)
+     duotoneYellow: '#E2C84B', // Основной цвет дуотона
      duotoneBlack: '#000000',  // Цвет тени
-     contrast: 2.2,             // Контрастность (1.0 - 3.5)
-     posterizeLevels: 3.0,      // Градация постеризации (2 - hard poster)
-     grungeIntensity: 0.35,     // Интенсивность процедурного шума/гранжа
-     scrollSpeed: 1.0,          // Множитель скорости скролла
-     autoScroll: true,          // Автоматическое движение
-     autoScrollSpeed: 0.6,      // Скорость авто-движения
+     contrast: 2.2,             // Контраст (1.0 - 3.5)
+     posterizeLevels: 3.0,      // Ступени постеризации (2 - жесткий дуотон)
+     grungeIntensity: 0.45,     // Интенсивность шума и гранжа (0.0 - 1.0)
+     scrollSensitivity: 1.2,    // Чувствительность смещения от колесика/скролла
+     autoScroll: true,          // Постоянный авто-дрейф полос
+     autoScrollSpeed: 0.6,      // Скорость авто-дрейфа
 
-     // Индивидуальные цвета для каждой из 4-х полос фото (опционально):
+     // Индивидуальные цвета для 4-х полос фото (опционально):
      rowColors: {
-          // 0: { light: '#0066FF', dark: '#000000' }, // Полоса 1 - Синий
-          // 1: { light: '#D4FF00', dark: '#000000' }, // Полоса 2 - Кислотно-зеленый
-          // 2: { light: '#FF007F', dark: '#000000' }, // Полоса 3 - Неоново-розовый
-          // 3: { light: '#E2C84B', dark: '#000000' }, // Полоса 4 - Желтый
+          0: { light: '#E2C84B', dark: '#000000' }, // Полоса 1
+          1: { light: '#87CEEB', dark: '#000000' }, // Полоса 2
+          2: { light: '#E2C84B', dark: '#000000' }, // Полоса 3
+          3: { light: '#E5E5E5', dark: '#000000' }, // Полоса 4
      },
-
-     // Длинный текст бегущих строк (DOKA Systems)
+     // #E2C84B
      lines: {
           text1: 'Framax Xlife • Framax Xlife plus • Frami Xlife • Alu-Framax Xlife • DokaXlight • Top 50 • FF20 • KS Xlife • Monolithic system • Dokaflex • Dokaflex 1-2-4 • Dokadek 30 • Doka Xclimb 60',
           text2: 'Doka floor tables • Dokamatic table • SKE plus • Xclimb 60 climbing formwork • MF240',
@@ -33,46 +32,45 @@ const CONFIG = {
           text4: 'Doka composite beam I tec 20 • Doka 3-S top • Framax quick-acting clamp • Concremote',
      },
 
-     // Изображения для 4-х фотосеток
      imageSets: [
           [
-               { id: '1', title: 'Framax Xlife Panel', category: 'Doka Systems', url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80' },
-               { id: '2', title: 'Formwork Construction', category: 'Site', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80' },
-               { id: '3', title: 'Heavy Duty Shoring', category: 'Staxo', url: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80' },
-               { id: '4', title: 'Dokaflex Floor System', category: 'Floors', url: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80' },
-               { id: '5', title: 'Climbing Formwork', category: 'Xclimb', url: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?auto=format&fit=crop&w=800&q=80' },
-               { id: '6', title: 'Monolithic Casting', category: 'Concrete', url: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=800&q=80' },
+               { id: '1', title: 'Framax Xlife Panel', category: 'Doka Systems', url: '/img/1.jpg' },
+               { id: '2', title: 'Formwork Construction', category: 'Site', url: '/img/2.jpg' },
+               { id: '3', title: 'Heavy Duty Shoring', category: 'Staxo', url: '/img/3.jpg' },
+               { id: '4', title: 'Dokaflex Floor System', category: 'Floors', url: '/img/4.jpg' },
+               { id: '5', title: 'Climbing Formwork', category: 'Xclimb', url: '/img/5.jpg' },
+               { id: '6', title: 'Monolithic Casting', category: 'Concrete', url: '/img/6.jpg' },
           ],
           [
-               { id: '7', title: 'Staxo 100 Tower', category: 'Load-Bearing', url: 'https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=800&q=80' },
-               { id: '8', title: 'Doka Beam H20 Top', category: 'Beams', url: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80' },
-               { id: '9', title: 'Dokamatic Table', category: 'Tables', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=800&q=80' },
-               { id: '10', title: 'Concremote Sensors', category: 'Tech', url: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=800&q=80' },
-               { id: '11', title: 'Framax Clamp Lock', category: 'Clamps', url: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=800&q=80' },
-               { id: '12', title: 'Shaft Platform SCF', category: 'Platforms', url: 'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?auto=format&fit=crop&w=800&q=80' },
+               { id: '7', title: 'Staxo 100 Tower', category: 'Load-Bearing', url: '/img/7.jpg' },
+               { id: '8', title: 'Doka Beam H20 Top', category: 'Beams', url: '/img/8.jpg' },
+               { id: '9', title: 'Dokamatic Table', category: 'Tables', url: '/img/9.jpg' },
+               { id: '10', title: 'Concremote Sensors', category: 'Tech', url: '/img/10.jpg' },
+               { id: '11', title: 'Framax Clamp Lock', category: 'Clamps', url: '/img/11.jpg' },
+               { id: '12', title: 'Shaft Platform SCF', category: 'Platforms', url: '/img/12.jpg' },
           ],
           [
-               { id: '13', title: 'Doka Eurex Top Props', category: 'Props', url: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=800&q=80' },
-               { id: '14', title: '3-S Top Sheets', category: 'Plywood', url: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=800&q=80' },
-               { id: '15', title: 'Xclimb 60 Hydraulic', category: 'Hydraulics', url: 'https://images.unsplash.com/photo-1464375117522-1311d6a5b81f?auto=format&fit=crop&w=800&q=80' },
-               { id: '16', title: 'DokaXlight Aluminium', category: 'Lightweight', url: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?auto=format&fit=crop&w=800&q=80' },
-               { id: '17', title: 'I tec 20 Composite', category: 'Beams', url: 'https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?auto=format&fit=crop&w=800&q=80' },
-               { id: '18', title: 'High-Rise Construction', category: 'SKE Plus', url: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=800&q=80' },
+               { id: '13', title: 'Doka Eurex Top Props', category: 'Props', url: '/img/13.jpg' },
+               { id: '14', title: '3-S Top Sheets', category: 'Plywood', url: '/img/14.jpg' },
+               { id: '15', title: 'Xclimb 60 Hydraulic', category: 'Hydraulics', url: '/img/15.jpg' },
+               { id: '16', title: 'DokaXlight Aluminium', category: 'Lightweight', url: '/img/16.jpg' },
+               { id: '17', title: 'I tec 20 Composite', category: 'Beams', url: '/img/1.jpg' },
+               { id: '18', title: 'High-Rise Construction', category: 'SKE Plus', url: '/img/2.jpg' },
           ],
           [
-               { id: '19', title: 'KS Xlife Heavy Duty', category: 'Wall Formwork', url: 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?auto=format&fit=crop&w=800&q=80' },
-               { id: '20', title: 'SKE Plus Automated', category: 'Self-Climbing', url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80' },
-               { id: '21', title: 'FF20 Circular Formwork', category: 'Curved Concrete', url: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80' },
-               { id: '22', title: 'Dokadek 30 Panel', category: 'Handset Slab', url: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80' },
-               { id: '23', title: 'Alu-Framax Lightweight', category: 'Alu Frame', url: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?auto=format&fit=crop&w=800&q=80' },
-               { id: '24', title: 'MF240 Crane Handling', category: 'Climbing', url: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=800&q=80' },
+               { id: '19', title: 'KS Xlife Heavy Duty', category: 'Wall Formwork', url: '/img/3.jpg' },
+               { id: '20', title: 'SKE Plus Automated', category: 'Self-Climbing', url: '/img/4.jpg' },
+               { id: '21', title: 'FF20 Circular Formwork', category: 'Curved Concrete', url: '/img/5.jpg' },
+               { id: '22', title: 'Dokadek 30 Panel', category: 'Handset Slab', url: '/img/6.jpg' },
+               { id: '23', title: 'Alu-Framax Lightweight', category: 'Alu Frame', url: '/img/7.jpg' },
+               { id: '24', title: 'MF240 Crane Handling', category: 'Climbing', url: '/img/8.jpg' },
           ]
      ]
 };
 
-// ==========================================
-// 2. GLSL ШЕЙДЕРЫ (Дуотон + Гранж Текста)
-// ==========================================
+// =========================================================
+// 2. GLSL ШЕЙДЕРЫ
+// =========================================================
 const DuotoneShader = {
      uniforms: {
           tDiffuse: { value: null },
@@ -80,7 +78,7 @@ const DuotoneShader = {
           uColorDark: { value: new THREE.Color('#000000') },
           uContrast: { value: 1.8 },
           uPosterizeLevels: { value: 3.0 },
-          uGrungeIntensity: { value: 0.35 },
+          uGrungeIntensity: { value: 0.45 },
           uHover: { value: 0.0 },
           uTime: { value: 0.0 },
      },
@@ -107,6 +105,17 @@ const DuotoneShader = {
       return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
     }
 
+    float noise(vec2 st) {
+      vec2 i = floor(st);
+      vec2 f = fract(st);
+      float a = rand(i);
+      float b = rand(i + vec2(1.0, 0.0));
+      float c = rand(i + vec2(0.0, 1.0));
+      float d = rand(i + vec2(1.0, 1.0));
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+    }
+
     void main() {
       vec4 texColor = texture2D(tDiffuse, vUv);
       float luminance = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
@@ -119,13 +128,16 @@ const DuotoneShader = {
       }
 
       vec3 duotoneColor = mix(uColorDark, uColorLight, cLuminance);
-      float grain = (rand(vUv * 500.0 + uTime * 0.1) - 0.5) * uGrungeIntensity * 0.25;
+      
+      float grain = (rand(vUv * 600.0 + uTime * 0.05) - 0.5) * uGrungeIntensity * 0.3;
+      float paperGrain = noise(vUv * 80.0) * uGrungeIntensity * 0.15;
 
-      vec3 finalColor = max(vec3(0.0), duotoneColor + vec3(grain));
+      vec3 finalColor = duotoneColor + vec3(grain - paperGrain);
       if (uHover > 0.0) {
-        finalColor += vec3(0.12, 0.1, 0.0) * uHover;
+        finalColor += vec3(0.15, 0.12, 0.0) * uHover;
       }
 
+      finalColor = max(vec3(0.0), finalColor);
       gl_FragColor = vec4(finalColor, 1.0);
     }
   `
@@ -135,7 +147,7 @@ const TextGrungeShader = {
      uniforms: {
           tDiffuse: { value: null },
           uColor: { value: new THREE.Color('#FFFFFF') },
-          uGrungeIntensity: { value: 0.4 },
+          uGrungeIntensity: { value: 0.45 },
           uTime: { value: 0.0 },
      },
      vertexShader: `
@@ -161,30 +173,35 @@ const TextGrungeShader = {
       vec4 texColor = texture2D(tDiffuse, vUv);
       if (texColor.a < 0.05) discard;
 
-      float grain = rand(vUv * 400.0) * uGrungeIntensity * 0.3;
+      float grain = rand(vUv * 500.0) * uGrungeIntensity * 0.35;
+      float scratch = smoothstep(0.48, 0.52, rand(vec2(vUv.x * 250.0, vUv.y * 12.0)));
+      
+      float alpha = texColor.a;
+      if (scratch < 0.18 * uGrungeIntensity) {
+        alpha *= 0.65;
+      }
+
       vec3 col = uColor - vec3(grain);
-      gl_FragColor = vec4(col, texColor.a);
+      gl_FragColor = vec4(col, alpha);
     }
   `
 };
 
-// ==========================================
-// 3. ГЕНЕРАТОРЫ ТЕКСТУР И ДИНАМИЧЕСКОГО ТЕКСТА
-// ==========================================
+// =========================================================
+// 3. ГЕНЕРАТОРЫ ТЕКСТУР И КАНВАС-НОЙСА
+// =========================================================
 function generateProceduralPortrait(index, width = 512, height = 640) {
      const canvas = document.createElement('canvas');
      canvas.width = width;
      canvas.height = height;
      const ctx = canvas.getContext('2d');
 
-     ctx.fillStyle = '#222';
+     ctx.fillStyle = '#111';
      ctx.fillRect(0, 0, width, height);
-
      ctx.fillStyle = '#fff';
      ctx.beginPath();
      ctx.arc(width / 2, height / 2 - 50, 100, 0, Math.PI * 2);
      ctx.fill();
-
      ctx.beginPath();
      ctx.ellipse(width / 2, height / 2 + 150, 180, 120, 0, 0, Math.PI * 2);
      ctx.fill();
@@ -194,26 +211,18 @@ function generateProceduralPortrait(index, width = 512, height = 640) {
      return texture;
 }
 
-/**
- * Генерирует текстуру текста с АВТОМАТИЧЕСКИМ РАСТЯЖЕНИЕМ.
- * Длинный текст сохраняет КРУПНЫЙ БОЛД ШРИФТ и продлевает 3D-полосу без сплющивания букв.
- */
 function createStretchedTextTexture(text, fontFamily = 'Space Grotesk, Impact, Arial Black, sans-serif', targetHeight = 256) {
      const cleanText = text.toUpperCase();
 
-     // Создаем временный холст для измерителя длины шрифта
      const measureCanvas = document.createElement('canvas');
      const measureCtx = measureCanvas.getContext('2d');
      const baseFontSize = targetHeight * 0.85;
      measureCtx.font = `900 ${baseFontSize}px ${fontFamily}`;
 
      const measuredWidth = measureCtx.measureText(cleanText).width;
-
-     // Динамически высчитываем ширину текстуры: текст никогда не сжимается!
      let canvasWidth = Math.max(2048, Math.ceil(measuredWidth + baseFontSize));
      let finalText = cleanText;
 
-     // Если текст короткий, повторяем его с аккуратной точкой-разделителем
      if (measuredWidth < 1800) {
           const separator = '   •   ';
           let repeated = cleanText;
@@ -243,15 +252,14 @@ function createStretchedTextTexture(text, fontFamily = 'Space Grotesk, Impact, A
      ctx.fillText(finalText, 0, 0);
      ctx.restore();
 
-     // Добавляем текстурный шум
      const imgData = ctx.getImageData(0, 0, canvasWidth, targetHeight);
      const data = imgData.data;
      for (let i = 0; i < data.length; i += 4) {
           if (data[i + 3] > 0) {
-               const noise = (Math.random() - 0.5) * 35;
+               const noise = (Math.random() - 0.5) * 45;
                data[i] = Math.min(255, Math.max(0, data[i] + noise));
-               data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
-               data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+               data[i + 1] = Math.min(255, Math.max(0, data[i] + noise));
+               data[i + 2] = Math.min(255, Math.max(0, data[i] + noise));
           }
      }
      ctx.putImageData(imgData, 0, 0);
@@ -262,9 +270,9 @@ function createStretchedTextTexture(text, fontFamily = 'Space Grotesk, Impact, A
      return texture;
 }
 
-// ==========================================
+// =========================================================
 // 4. THREE.JS 3D КОМПОНЕНТЫ
-// ==========================================
+// =========================================================
 function ImageCard({ item, index, width, height, xPos, config, colorLight, colorDark, onSelect }) {
      const [hovered, setHovered] = useState(false);
      const [texture, setTexture] = useState(null);
@@ -358,8 +366,9 @@ function ImageCard({ item, index, width, height, xPos, config, colorLight, color
      );
 }
 
-function ImageGridLine({ items, rowY, rowHeight, lineOffsetX, direction, config, gridIndex, onSelect }) {
+function ImageGridLine({ items, rowY, rowHeight, lineOffsetRef, direction, config, gridIndex, onSelect }) {
      const { viewport } = useThree();
+     const groupRef = useRef();
 
      const rowColorLight = (config.rowColors && config.rowColors[gridIndex]?.light) || config.duotoneYellow;
      const rowColorDark = (config.rowColors && config.rowColors[gridIndex]?.dark) || config.duotoneBlack;
@@ -371,13 +380,18 @@ function ImageGridLine({ items, rowY, rowHeight, lineOffsetX, direction, config,
      const singleSetWidth = items.length * cardWidth;
      const totalRowWidth = repeatedItems.length * cardWidth;
 
-     let wrappedX = lineOffsetX % singleSetWidth;
-     if (direction === 'left') {
-          wrappedX = -wrappedX;
-     }
+     useFrame(() => {
+          if (groupRef.current && lineOffsetRef.current !== undefined) {
+               const currentOffset = lineOffsetRef.current;
+               // Направление движения: 'left' -> влево (-), 'right' -> вправо (+)
+               const directedOffset = direction === 'left' ? -currentOffset : currentOffset;
+               const wrappedX = ((directedOffset % singleSetWidth) + singleSetWidth) % singleSetWidth;
+               groupRef.current.position.x = wrappedX - singleSetWidth;
+          }
+     });
 
      return (
-          <group position={[wrappedX - singleSetWidth, rowY, 0]}>
+          <group ref={groupRef} position={[0, rowY, 0]}>
                {repeatedItems.map((item, idx) => {
                     const xPos = idx * cardWidth - totalRowWidth / 3;
                     return (
@@ -399,8 +413,9 @@ function ImageGridLine({ items, rowY, rowHeight, lineOffsetX, direction, config,
      );
 }
 
-function TextLine({ text, rowY, rowHeight, lineOffsetX, direction, config }) {
+function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
      const { viewport } = useThree();
+     const groupRef = useRef();
 
      const texture = useMemo(() => {
           return createStretchedTextTexture(text, 'Space Grotesk, Impact, Arial Black, sans-serif', 256);
@@ -431,17 +446,18 @@ function TextLine({ text, rowY, rowHeight, lineOffsetX, direction, config }) {
           if (shaderMaterial) {
                shaderMaterial.uniforms.uTime.value = state.clock.getElapsedTime();
           }
+          if (groupRef.current && lineOffsetRef.current !== undefined) {
+               const currentOffset = lineOffsetRef.current;
+               // Направление движения: 'left' -> влево (-), 'right' -> вправо (+)
+               const directedOffset = direction === 'left' ? -currentOffset : currentOffset;
+               const wrappedX = ((directedOffset % planeWidth) + planeWidth) % planeWidth;
+               groupRef.current.position.x = wrappedX;
+          }
      });
 
-     const singleSetWidth = planeWidth;
-     let wrappedX = lineOffsetX % singleSetWidth;
-     if (direction === 'left') {
-          wrappedX = -wrappedX;
-     }
-
      return (
-          <group position={[wrappedX, rowY, 0]}>
-               {[-1, 0, 1, 2].map((repeatIndex) => (
+          <group ref={groupRef} position={[0, rowY, 0]}>
+               {[-2, -1, 0, 1, 2, 3].map((repeatIndex) => (
                     <group key={repeatIndex} position={[repeatIndex * planeWidth, 0, 0]}>
                          <mesh position={[0, 0, -0.01]}>
                               <planeGeometry args={[planeWidth, rowHeight]} />
@@ -457,35 +473,74 @@ function TextLine({ text, rowY, rowHeight, lineOffsetX, direction, config }) {
      );
 }
 
-// ==========================================
-// 5. ОСНОВНОЕ СОДЕРЖИМОЕ THREE.JS СЦЕНЫ
-// ==========================================
+// =========================================================
+// 5. РАЗНОНАПРАВЛЕННЫЙ СКРОЛЛ (ПОДДЕРЖКА WHEEL + SCROLL)
+// =========================================================
 function PosterContent({ config, onSelect }) {
      const { viewport } = useThree();
-     const scroll = useScroll();
 
-     const offsetRef = useRef(0);
-     const lastScrollOffsetRef = useRef(0);
-     const [lineOffsetX, setLineOffsetX] = useState(0);
+     const lineOffsetRef = useRef(0);
+     const targetOffsetRef = useRef(0);
+     const lastScrollYRef = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
+
+     useEffect(() => {
+          // Слушаем скролл окна браузера
+          const handleScroll = () => {
+               const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+               const deltaY = currentScrollY - lastScrollYRef.current;
+               lastScrollYRef.current = currentScrollY;
+               targetOffsetRef.current += deltaY * 1.5 * config.scrollSensitivity;
+          };
+
+          // Слушаем прямое событие колесика мыши
+          const handleWheel = (e) => {
+               targetOffsetRef.current += e.deltaY * 0.8 * config.scrollSensitivity;
+          };
+
+          // Слушаем тач-события для мобильных устройств
+          let touchStartY = 0;
+          const handleTouchStart = (e) => {
+               touchStartY = e.touches[0].clientY;
+          };
+          const handleTouchMove = (e) => {
+               const currentY = e.touches[0].clientY;
+               const deltaY = touchStartY - currentY;
+               touchStartY = currentY;
+               targetOffsetRef.current += deltaY * 1.5 * config.scrollSensitivity;
+          };
+
+          window.addEventListener('scroll', handleScroll, { passive: true });
+          window.addEventListener('wheel', handleWheel, { passive: true });
+          window.addEventListener('touchstart', handleTouchStart, { passive: true });
+          window.addEventListener('touchmove', handleTouchMove, { passive: true });
+
+          return () => {
+               window.removeEventListener('scroll', handleScroll);
+               window.removeEventListener('wheel', handleWheel);
+               window.removeEventListener('touchstart', handleTouchStart);
+               window.removeEventListener('touchmove', handleTouchMove);
+          };
+     }, [config.scrollSensitivity]);
 
      useFrame((state, delta) => {
-          const currentScrollOffset = scroll ? scroll.offset : 0;
-          const scrollDelta = currentScrollOffset - lastScrollOffsetRef.current;
-          lastScrollOffsetRef.current = currentScrollOffset;
-
-          let moveAmount = scrollDelta * viewport.width * 3.0 * config.scrollSpeed;
+          // Авто-движение
           if (config.autoScroll) {
-               moveAmount += delta * viewport.width * 0.09 * config.autoScrollSpeed;
+               targetOffsetRef.current += delta * 60.0 * config.autoScrollSpeed;
           }
 
-          offsetRef.current += moveAmount;
-          setLineOffsetX(offsetRef.current);
+          // Плавный lerp смещения
+          lineOffsetRef.current = THREE.MathUtils.lerp(
+               lineOffsetRef.current,
+               targetOffsetRef.current,
+               0.1
+          );
      });
 
      const totalLines = 8;
      const rowHeight = viewport.height / totalLines;
      const startY = viewport.height / 2 - rowHeight / 2;
 
+     // Чередование направлений: 'left' <-> 'right'
      const lineConfigs = [
           { type: 'text', direction: 'left', content: config.lines.text1 },
           { type: 'images', direction: 'right', items: config.imageSets[0] || [], gridIndex: 0 },
@@ -509,7 +564,7 @@ function PosterContent({ config, onSelect }) {
                                    text={line.content}
                                    rowY={rowY}
                                    rowHeight={rowHeight}
-                                   lineOffsetX={lineOffsetX}
+                                   lineOffsetRef={lineOffsetRef}
                                    direction={line.direction}
                                    config={config}
                               />
@@ -521,7 +576,7 @@ function PosterContent({ config, onSelect }) {
                                    items={line.items}
                                    rowY={rowY}
                                    rowHeight={rowHeight * 1.4}
-                                   lineOffsetX={lineOffsetX}
+                                   lineOffsetRef={lineOffsetRef}
                                    direction={line.direction}
                                    config={config}
                                    gridIndex={line.gridIndex}
@@ -534,9 +589,9 @@ function PosterContent({ config, onSelect }) {
      );
 }
 
-// ==========================================
+// =========================================================
 // 6. ПОП-АП МОДАЛЬНОЕ ОКНО (ВНЕ CANVAS)
-// ==========================================
+// =========================================================
 function ImagePopup({ selectedData, onClose }) {
      if (!selectedData) return null;
      const { item, color } = selectedData;
@@ -642,34 +697,34 @@ function ImagePopup({ selectedData, onClose }) {
                               </h2>
                          </div>
 
-                         <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                   display: 'block',
-                                   textAlign: 'center',
-                                   backgroundColor: color,
-                                   color: '#000000',
-                                   fontWeight: 'bold',
-                                   padding: '12px 20px',
-                                   borderRadius: '8px',
-                                   textDecoration: 'none',
-                                   fontSize: '13px',
-                                   textTransform: 'uppercase'
-                              }}
-                         >
-                              Открыть оригинал
-                         </a>
+                         {/*<a*/}
+                         {/*     href={item.url}*/}
+                         {/*     target="_blank"*/}
+                         {/*     rel="noreferrer"*/}
+                         {/*     style={{*/}
+                         {/*          display: 'block',*/}
+                         {/*          textAlign: 'center',*/}
+                         {/*          backgroundColor: color,*/}
+                         {/*          color: '#000000',*/}
+                         {/*          fontWeight: 'bold',*/}
+                         {/*          padding: '12px 20px',*/}
+                         {/*          borderRadius: '8px',*/}
+                         {/*          textDecoration: 'none',*/}
+                         {/*          fontSize: '13px',*/}
+                         {/*          textTransform: 'uppercase'*/}
+                         {/*     }}*/}
+                         {/*>*/}
+                         {/*     Открыть оригинал*/}
+                         {/*</a>*/}
                     </div>
                </div>
           </div>
      );
 }
 
-// ==========================================
+// =========================================================
 // 7. ГЛАВНЫЙ ЭКСПОРТИРУЕМЫЙ КОМПОНЕНТ
-// ==========================================
+// =========================================================
 export default function InteractivePoster({ customConfig = {} }) {
      const [selectedData, setSelectedData] = useState(null);
 
@@ -678,20 +733,48 @@ export default function InteractivePoster({ customConfig = {} }) {
      }, [customConfig]);
 
      return (
-          <div style={{ width: '100vw', height: '100vh', backgroundColor: activeConfig.bgColor, overflow: 'hidden', position: 'relative' }}>
-               <Canvas
-                    gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
-                    style={{ background: activeConfig.bgColor }}
-               >
-                    <OrthographicCamera makeDefault position={[0, 0, 100]} zoom={1} />
-                    <ScrollControls pages={2} damping={0.2}>
+          <div style={{ backgroundColor: activeConfig.bgColor, color: '#ffffff', minHeight: '100vh', width: '100%' }}>
+
+               {/* СЕКЦИЯ 1: ИНТЕРАКТИВНЫЙ ПЛАКАТ */}
+               <section style={{ height: '100vh', width: '100vw', position: 'relative', overflow: 'hidden' }}>
+                    <Canvas
+                         gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
+                         style={{ width: '100%', height: '100%', background: activeConfig.bgColor }}
+                    >
+                         <OrthographicCamera makeDefault position={[0, 0, 100]} zoom={1} />
                          <PosterContent
                               config={activeConfig}
                               onSelect={(item, color) => setSelectedData({ item, color })}
                          />
-                    </ScrollControls>
-               </Canvas>
+                    </Canvas>
 
+                    {/* SVG ФИЛЬТР ЗЕРНИСТОСТИ */}
+                    <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }}>
+                         <filter id="poster-noise-filter">
+                              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch" />
+                              <feColorMatrix type="saturate" values="0" />
+                              <feComponentTransfer>
+                                   <feFuncA type="linear" slope="0.12" />
+                              </feComponentTransfer>
+                         </filter>
+                    </svg>
+
+                    {/* ОВЕРЛЕЙ ШУМА ПОВЕРХ ПЛАКАТА */}
+                    <div
+                         style={{
+                              position: 'absolute',
+                              inset: 0,
+                              pointerEvents: 'none',
+                              filter: 'url(#poster-noise-filter)',
+                              opacity: 0.9,
+                              mixBlendMode: 'screen',
+                              zIndex: 10
+                         }}
+                    />
+               </section>
+
+
+               {/* ПОП-АП МОДАЛЬНОЕ ОКНО */}
                <ImagePopup
                     selectedData={selectedData}
                     onClose={() => setSelectedData(null)}

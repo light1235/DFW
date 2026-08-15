@@ -473,7 +473,7 @@ export function ExtrudedArrow() {
                     clearcoat={0}
                     transmission={0.85}
                />
-               <Outlines thickness={0.08} color="#0284c7" />
+               <Outlines thickness={0.08} color="#ffffff" />
           </mesh>
      );
 } // <- Эта скобка отсутствовала

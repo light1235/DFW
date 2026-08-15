@@ -2,8 +2,16 @@ import './App.css';
 import {Canvas} from '@react-three/fiber';
 import HeaderSection from './components/dom/HeaderSection.jsx';
 import {Environment, Fisheye, OrbitControls, Texture, useHelper,} from "@react-three/drei";
-import {EffectComposer, Bloom, Noise, ChromaticAberration, Scanline, DotScreen} from '@react-three/postprocessing';
-import { BlendFunction } from 'postprocessing';
+import {
+     EffectComposer,
+     Bloom,
+     Noise,
+     ChromaticAberration,
+     Scanline,
+     DotScreen,
+     ToneMapping
+} from '@react-three/postprocessing';
+import {BlendFunction, ToneMappingMode} from 'postprocessing';
 
 import * as THREE from 'three'
 import React, {Suspense, useEffect, useRef, useState} from "react";
@@ -15,6 +23,7 @@ import {MatrixRainScreenR3F} from "./components/canvas/TranisitionMatrixShader.j
 import GoldenTwilightScene from "./components/canvas/scenes/Scene4/index.jsx";
 import InteractivePoster from "./components/canvas/scenes/Scene5/index.jsx";
 import Scene6 from "./components/canvas/scenes/Scene6/index.jsx";
+import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -47,18 +56,29 @@ function Lights() {
 export default function App() {
      const [loading, setLoading] = useState(true);
 
+
      // Имитация загрузки ресурсов (например 3 секунды)
      useEffect(() => {
           const timer = setTimeout(() => {
                setLoading(false); // Запускаем 0.7s плавающий fade-out
           }, 3000);
 
+
           return () => clearTimeout(timer);
      }, []);
 // #0A0015
+// #251002
+// ContactScene(6)
+// InteractivePoster(5)
+// GoldenTwilightScene(4)
+// ExcavationPitScene(3)
+// LabScene(2)
+// ExpoScene(1)
+// PortalLabScene
+
   return (
     <div className="main-wrapper" style={{ height: '100vh', width: '100vw',background: '#0A0015',overflowY: 'auto',overflowX: 'hidden', position:'relative'  }}>
-      <HeaderSection />
+         <HeaderSection />
       {/* Фиксированный Canvas для 4 сцен */}
       <Canvas className="fixed-canvas"
               camera={{ position: [0, 10, 45], fov: 30 }}
@@ -67,7 +87,7 @@ export default function App() {
       >
         {/*<SceneManager />*/}
         <color attach="background" args={['#1a1a1a']} />
-           <fog attach="fog" args={['#1a1a1a', 15, 80]} />
+        <fog attach="fog" args={['#1a1a1a', 15, 80]} />
         {/*<fog attach="fog" args={['#1a1a1a', 15, 50]} />*/}
         {/*<OrbitControls />*/}
         {/*   <ScrollCameraPath />*/}
@@ -75,19 +95,19 @@ export default function App() {
         {/*<Scene1 />*/}
            <Scene6 />
         {/*   <Scene2 />*/}
-        {/*   <VHSScreenGlitchR3F*/}
-        {/*        active={loading}*/}
-        {/*        duration={2.5}*/}
-        {/*        fadeDuration={0.1}*/}
-        {/*        intensity={1.0}*/}
-        {/*        onFinished={() => console.log('Заставка полностью исчезла!')}*/}
-        {/*   />*/}
+           <VHSScreenGlitchR3F
+                active={loading}
+                duration={2.5}
+                fadeDuration={0.1}
+                intensity={1.0}
+                onFinished={() => console.log('Заставка полностью исчезла!')}
+           />
         {/*   <MatrixRainScreenR3F*/}
         {/*        active={loading}*/}
         {/*        fadeDuration={0.7}*/}
         {/*        onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
         {/*   />*/}
-           {/*<PortalToSceneTwo />*/}
+        {/*   <PortalToSceneTwo />*/}
            {/*     <GoldenTwilightScene />*/}
 
           {/*<InteractivePoster />*/}
@@ -122,7 +142,7 @@ export default function App() {
       {/* Нативный HTML-контент */}
       <main className="html-content">
         {/*<ContentSection />*/}
-        {/*   <InteractivePoster />*/}
+           <InteractivePoster />
       </main>
          {/*<div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>*/}
 
