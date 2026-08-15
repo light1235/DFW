@@ -24,6 +24,7 @@ import GoldenTwilightScene from "./components/canvas/scenes/Scene4/index.jsx";
 import InteractivePoster from "./components/canvas/scenes/Scene5/index.jsx";
 import Scene6 from "./components/canvas/scenes/Scene6/index.jsx";
 import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
+import Scene3 from "./components/canvas/scenes/Scene3/index.jsx";
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -92,9 +93,10 @@ export default function App() {
         {/*<OrbitControls />*/}
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
-        {/*<Scene1 />*/}
-           <Scene6 />
+        <Scene1 />
+        {/*   <Scene6 />*/}
         {/*   <Scene2 />*/}
+           <Scene3 />
            <VHSScreenGlitchR3F
                 active={loading}
                 duration={2.5}
@@ -140,10 +142,10 @@ export default function App() {
       <div className="scroll-spacer" />
 
       {/* Нативный HTML-контент */}
-      <main className="html-content">
-        {/*<ContentSection />*/}
-           <InteractivePoster />
-      </main>
+      {/*<main className="html-content">*/}
+      {/*  /!*<ContentSection />*!/*/}
+      {/*     <InteractivePoster />*/}
+      {/*</main>*/}
          {/*<div className="main-wrapper" style={{ height: '100vh', width: '100vw' }}>*/}
 
          {/*</div>*/}
