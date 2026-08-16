@@ -3,6 +3,8 @@ import {OrbitControls, OrthographicCamera, PerspectiveCamera, Stars, useGLTF} fr
 import * as THREE from "three";
 import {useFrame, useThree} from "@react-three/fiber";
 import {MathUtils} from "three";
+import {ModelFortress7} from "./model.jsx";
+import {ModelFort} from "../../../Sun.jsx";
 
 function LedLineWithRealLight() {
      return (
@@ -44,7 +46,27 @@ function LedLine({ position, rotation }) {
      )
 }
 
+function ModelHelmet() {
+     // Путь указывается от папки public
+     const { scene } = useGLTF('model/helmet.glb');
 
+     // Проходим по всем полигонам модели и меняем их материалы
+     scene.traverse((child) => {
+          if (child.isMesh) {
+               // Сохраняем старую текстуру, если она была
+               const originalTexture = child.material.map;
+
+               // Заменяем материал на базовый (не требующий света)
+               child.material = new THREE.MeshBasicMaterial({
+                    map: originalTexture,             // Возвращаем текстуру модели
+                    color: child.material.color,     // Сохраняем оригинальный цвет
+               });
+          }
+     });
+
+     return <primitive object={scene}  scale={5} position={[183.5, 198.4, 23]} rotation={[0,-.6,0]} />;
+}
+// 202 одетая
 
 function ModelIndustrial() {
      // Путь указывается от папки public
@@ -133,7 +155,8 @@ function ModelGrate() {
 
 function ModelFortress() {
      // Путь указывается от папки public
-     const { scene } = useGLTF('model/scene3/Fortress.glb');
+     const { scene } = useGLTF('model/scene3/1cell.glb');
+
 
      // Проходим по всем полигонам модели и меняем их материалы
      scene.traverse((child) => {
@@ -154,7 +177,7 @@ function ModelFortress() {
 
 function ModelBox() {
      // Путь указывается от папки public
-     const { scene } = useGLTF('model/scene3/scaled.glb');
+     const { scene } = useGLTF('model/scene3/scene-box.glb');
 
      // Проходим по всем полигонам модели и меняем их материалы
      scene.traverse((child) => {
@@ -228,13 +251,16 @@ const ExcavationPitScene = () => {
                     <circleGeometry args={[1, 32]} />
                     <meshStandardMaterial side={THREE.DoubleSide} color="aquamarine" />
                </mesh>
-               <CameraLogger />
+               {/*<CameraLogger />*/}
                <ModelBox />
-               <ModelFortress />
+               {/*<ModelFortress />*/}
+               {/*<ModelFortress7 />*/}
+               <ModelFort />
                <ModelStairk />
                <ModelGrate />
                <ModelDamaged />
                <ModelIndustrial />
+               {/*<ModelHelmet />*/}
                <LedLine position={[241.2, 212, 15]} rotation={[0, 2.6, 0]} />
                <LedLine position={[173, 212, -38]} rotation={[0, 2.6, 0]} />
           </>
@@ -243,6 +269,3 @@ const ExcavationPitScene = () => {
 
 export default ExcavationPitScene;
 // <PerspectiveCamera makeDefault position={[0, 0, 10]} />
-// Position: [178.61, 199.77, 29.08]
-// Rotation (deg): [0.5, -41.6, 0.4]
-// LookAt target: [179.28, 199.78, 28.33]
