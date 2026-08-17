@@ -8,7 +8,7 @@ export function ModelFortress7() {
      const { scene } = useGLTF('model/scene3/fortress-cell.glb');
 
      const alphaTexture = useTexture(
-          'model/scene3/d1.jpg'
+          'model/scene3/d2.jpg'
      );
      const materialsRef = useRef([]);
      const opsSpeed = 0.008;
