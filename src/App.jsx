@@ -25,35 +25,9 @@ import InteractivePoster from "./components/canvas/scenes/Scene5/index.jsx";
 import Scene6 from "./components/canvas/scenes/Scene6/index.jsx";
 import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
 import Scene3 from "./components/canvas/scenes/Scene3/index.jsx";
-import {Perf} from "r3f-perf";
 import { Stats } from '@react-three/drei'
+import SceneManager from "./components/canvas/SceneManager.jsx";
 
-// import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
-function Lights() {
-  const light = useRef()
-  useHelper(light, THREE.SpotLightHelper, 2)
-  return <spotLight
-    ref={light}
-
-    // Позиция и цвет
-    position={[-15, 20, 5]}
-    color="yellow"
-    intensity={20}
-
-    // Параметры луча
-    angle={0.5}               // Угол конуса
-    penumbra={0.8}             // Мягкие края пятна
-    distance={20}              // Дальность света
-    decay={2}                  // Физическое затухание
-    target-position={[0, 5, 0]}
-    // Тени
-    castShadow
-    shadow-mapSize-width={2048} // Качество тени (512 / 1024 / 2048)
-    shadow-mapSize-height={2048}
-    shadow-bias={-0.0001}       // Избавление от артефактов
-    shadow-normalBias={0.05}
-  />
-}
 
 
 export default function App() {
@@ -89,20 +63,11 @@ export default function App() {
               gl={{ antialias: true, toneMappingExposure: 1.15 }}
       >
 
-
         <color attach="background" args={['#1a1a1a']} />
         <fog attach="fog" args={['#1a1a1a', 15, 80]} />
 
-
-           {/*<SceneManager />*/}
-        {/*<OrbitControls />*/}
-        {/*   <ScrollCameraPath />*/}
-           {/*<Environment preset="forest" background blur={0.4}/>*/}
-        {/*<Lights />*/}
-        {/*<Scene1 />*/}
-        {/*   <Scene6 />*/}
-        {/*   <Scene2 />*/}
-           <Scene3 />
+           {/*<OrbitControls />*/}
+           <SceneManager />
            <VHSScreenGlitchR3F
                 active={loading}
                 duration={2.5}
@@ -115,7 +80,7 @@ export default function App() {
         {/*        fadeDuration={0.7}*/}
         {/*        onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
         {/*   />*/}
-           <PortalToSceneTwo />
+
            {/*     <GoldenTwilightScene />*/}
 
           {/*<InteractivePoster />*/}

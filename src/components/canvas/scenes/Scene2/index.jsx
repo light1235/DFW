@@ -282,7 +282,7 @@ export function ConveyorBelt() {
      );
 }
 
-const SceneTwo = () => {
+const LabScene = ({orbit}) => {
      const [activeId, setActiveId] = useState(null);
      const controlsRef = useRef();
 
@@ -364,7 +364,8 @@ const SceneTwo = () => {
 
                <Stars radius={100} depth={50} count={5000} factor={4} saturation={2} fade speed={3} />
                <CameraRig activeId={activeId} controlsRef={controlsRef} />
-               {/*<OrbitControls ref={controlsRef}  />*/}
+               {orbit &&   <OrbitControls ref={controlsRef}  />}
+
                <ConveyorBelt />
 
                <mesh position={[0, -0.5, -45]}>
@@ -387,16 +388,40 @@ const SceneTwo = () => {
      );
 };
 
-export default SceneTwo;
+export default LabScene;
 
 export function PortalToSceneTwo() {
+     const [blend, setBlend] = useState(0);
+     const [cameraDefault, setCameraDefault] = useState(false);
+     const [orbit, setOrbit] = useState(false);
+
+     const handlePointerOver = (e) => {
+          e.stopPropagation()
+          document.body.style.cursor = 'pointer'
+          setTimeout(() => {
+               document.body.style.cursor = 'auto'
+          })
+     }
+
+     const handlePointerOut = () => {
+          document.body.style.cursor = 'auto'
+     }
+
+     const goToScene = () => {
+          console.log("123");
+          setBlend(1)
+          setCameraDefault(true);
+          setOrbit(true)
+     };
+
      return (
-          <mesh position={[1.393, 7.104, -10.86]} rotation={[0, -115 * (Math.PI / 180), 0]}>
+          <mesh position={[1.393, 7.104, -10.86]} rotation={[0, -115 * (Math.PI / 180), 0]} onClick={goToScene}   onPointerOver={handlePointerOver}
+                onPointerOut={handlePointerOut}>
                <circleGeometry args={[0.26, 64]} />
-               <MeshPortalMaterial blend={0}>
+               <MeshPortalMaterial blend={blend}>
                     {/*<PerspectiveCamera  position={[0, 0, 10]} />*/}
-                    <PerspectiveCamera makeDefault={false} position={[0, 0, 10]} />
-                    <SceneTwo />
+                    <PerspectiveCamera makeDefault={cameraDefault} position={[0, 0, 10]} />
+                    <LabScene orbit={orbit} />
                </MeshPortalMaterial>
           </mesh>
      );

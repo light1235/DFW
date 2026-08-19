@@ -51,7 +51,7 @@ function SmartRectLight() {
 }
 
 
-const EtherealCosmicVeil = () => {
+const ExpoScene = () => {
   const materialRef = useRef();
      const controlsRef = React.useRef();
 
@@ -218,7 +218,7 @@ const EtherealCosmicVeil = () => {
 
   return (
     <>
-         {/*<CameraParallax intensity={1} factor={0.05} />*/}
+         <CameraParallax intensity={1} factor={0.05} />
       <group position={[-6, 5, 16]} rotation={[-0.1, 0, 0]}>
         <FlagText active={setActiveScrollCamera} />
       </group>
@@ -252,11 +252,10 @@ const EtherealCosmicVeil = () => {
                 <PortalText />
            </group>
            {activeScrollCamera &&   <ScrollCameraPath portal={setPortalTExt} />}
-
       </mesh>
     </>
 
   );
 };
 
-export default EtherealCosmicVeil;
+export default ExpoScene;
