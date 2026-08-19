@@ -1,4 +1,4 @@
-import React, {useRef, useMemo, useState} from 'react';
+import React, {useRef, useMemo, useState, useEffect} from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import FlagText from "./text.jsx";
@@ -9,6 +9,7 @@ import RainbowLaser, {ConeLaser} from "./Laser.jsx";
 import SplineEditor from "../../CameraController.jsx";
 import {ScrollCameraPath} from "../../ViewportCanvas.jsx";
 import {PortalToSceneTwo} from "../Scene2/index.jsx";
+import PortalText from "./PortalText.jsx";
 
 
 export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
@@ -52,6 +53,7 @@ function SmartRectLight() {
 
 const EtherealCosmicVeil = () => {
   const materialRef = useRef();
+     const controlsRef = React.useRef();
 
 
   // Vertex Shader
@@ -204,12 +206,21 @@ const EtherealCosmicVeil = () => {
     }
 
   });
+     const [activeScrollCamera, setActiveScrollCamera] = useState(false);
+     const [isLaserOn, setIsLaserOn] = useState(false);
+     const [portalTExt, setPortalTExt] = useState(false);
+
+     useEffect(() => {
+          setTimeout(() => {
+               setIsLaserOn(true)
+          },3000)
+     })
 
   return (
     <>
          {/*<CameraParallax intensity={1} factor={0.05} />*/}
       <group position={[-6, 5, 16]} rotation={[-0.1, 0, 0]}>
-        <FlagText />
+        <FlagText active={setActiveScrollCamera} />
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]}>
         <planeGeometry args={[60, 60, 64, 64]} />
@@ -222,20 +233,25 @@ const EtherealCosmicVeil = () => {
           depthWrite={false}
           side={THREE.DoubleSide}
         />
-           <SmartRectLight />
+           <SmartRectLight/>
            <ConeLaser
+                active={isLaserOn}
                 radius={0.3}
                 height={21.0}
                 thetaLength={6.6}
                 emissiveIntensity={3.5}
-                speed={1.0}
+                speed={1.5}
                 position={[-3, 4.6, 6.2]}
                 rotation={[40, 100, Math.PI / 1.67]}
            />
-           <Model  rotation={[-Math.PI / -2.0, 0, 0]} scale={7} position={[-12, 10, 3.8]} inputRotationZ={-20}/>
-        <Formwork rotation={[-Math.PI / -2.0, 1, 0]} scale={0.0041} position={[3, 3, 0.8]} />
-           {/*<SplineEditor controlsRef={controlsRef} />*/}
-       {/*<ScrollCameraPath />*/}
+           <Model rotation={[-Math.PI / -2.0, 0, 0]} scale={7} position={[-12, 10, 3.8]} inputRotationZ={-65}/>
+           <Formwork rotation={[-Math.PI / -2.0, 1, 0]} scale={0.0041} position={[3, 3, 0.8]}/>
+           <group position={[-10.1, 9.4, 6.0]}     rotation={[Math.PI / 2, -Math.PI / 1.5, 0]}
+                  anchorX="center"
+                  anchorY="middle">
+                <PortalText />
+           </group>
+           {activeScrollCamera &&   <ScrollCameraPath portal={setPortalTExt} />}
 
       </mesh>
     </>

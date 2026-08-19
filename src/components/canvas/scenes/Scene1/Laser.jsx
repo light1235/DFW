@@ -1,7 +1,9 @@
-import React, { forwardRef, useRef } from 'react';
-import { extend, useFrame } from '@react-three/fiber';
+import React, {forwardRef, useEffect, useRef} from 'react';
+import {extend, useFrame, useThree} from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
 import * as THREE from 'three';
+import { animate } from 'animejs'; // v4
+import 'animejs/adapters/three';
 
 // -----------------------------------------------------------------------------
 // Шейдерный материал, адаптированный под 3D-конус
@@ -13,6 +15,7 @@ const RainbowLaserMaterial = shaderMaterial(
           fade: 0.15,
           emissiveIntensity: 3.0,
           ratio: 1.0,
+          uProgress: 0.0, // Новый параметр для плавной проявки луча
      },
      /* Vertex Shader */ `
     varying vec2 vUv;
@@ -32,6 +35,7 @@ const RainbowLaserMaterial = shaderMaterial(
     uniform float emissiveIntensity;
     uniform float time;
     uniform float ratio;
+    uniform float uProgress; // Получаем прогресс анимации
 
     vec3 physhue2rgb(float hue, float ratio_val) {
       return smoothstep(vec3(0.0), vec3(1.0), abs(mod(hue + vec3(0.0, 1.0, 2.0) * ratio_val, 1.0) * 2.0 - 1.0));
@@ -69,7 +73,6 @@ const RainbowLaserMaterial = shaderMaterial(
       return y;
     }
 
-    // Спектр света Alan Zucconi (от 400 нм фиолетовый до 700 нм красный)
     vec3 spectral_zucconi6(float w, float t) {    
       float x = _saturate((w - 400.0) / 300.0);
       const vec3 c1 = vec3(3.54585104, 2.93225262, 2.41593945);
@@ -82,21 +85,21 @@ const RainbowLaserMaterial = shaderMaterial(
     }
 
     void main() {
-      // 1. Распределяем радужный спектр вдоль длины конуса (vUv.y) и ширинa (vUv.x)
       float rainbowProgress = vUv.y + (vUv.x * 0.2); 
-      float w = mod((rainbowProgress - time * 0.1) * 300.0, 300.0) + 400.0; // Wavelength [400..700]
+      float w = mod((rainbowProgress - time * 0.1) * 300.0, 300.0) + 400.0; 
 
-      // 2. Получаем спектральный цвет
       vec3 c = spectral_zucconi6(w, time);
-
-      // 3. Расчёт иридесценции (переливов)
       vec3 iri = iridescence(vUv.x * 3.14159, 1.0 - vUv.y + time * 0.1);
       vec3 finalColor = c / max(vec3(0.1), iri) * 1.8;
 
-      // 4. Мягкое угасание (fade) к краям конуса
       float edgeFade = smoothstep(0.0, fade, vUv.y) * smoothstep(1.0, 1.0 - fade, vUv.y);
       float sideFade = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
-      float alpha = edgeFade * sideFade;
+      
+      // ЭФФЕКТ РОСТА: отсекаем альфу по координате vUv.y (длина конуса от 0 до 1)
+      // vUv.y идет снизу вверх, поэтому инвертируем или оставляем в зависимости от направления конуса
+      float growthAlpha = smoothstep((1.0 - vUv.y) - 0.05, (1.0 - vUv.y), uProgress);
+
+      float alpha = edgeFade * sideFade * growthAlpha;
 
       gl_FragColor = vec4(finalColor * alpha * emissiveIntensity, alpha);
       if (gl_FragColor.a < 0.01) discard;
@@ -108,9 +111,6 @@ const RainbowLaserMaterial = shaderMaterial(
 
 extend({ RainbowLaserMaterial });
 
-// -----------------------------------------------------------------------------
-// Компонент Лазера
-// -----------------------------------------------------------------------------
 export const ConeLaser = forwardRef((props, ref) => {
      const {
           radius = 0.3,
@@ -122,10 +122,29 @@ export const ConeLaser = forwardRef((props, ref) => {
           fade = 0.15,
           emissiveIntensity = 3.0,
           ratio = 1.0,
+          active = false,
           ...restProps
      } = props;
 
      const materialRef = useRef();
+     const { invalidate } = useThree();
+
+     useEffect(() => {
+          if (!materialRef.current) return;
+
+          // Теперь Anime.js v4 плавно анимирует свойство uProgress внутри ШЕЙДЕРА
+          // Объект вообще не двигается физически, поэтому позиция не слетит!
+          const animation = animate(materialRef.current, {
+               uProgress: active ? 1 : 0,
+               duration: 1300,
+               ease: 'outQuad',
+               autoplay: true,
+               delay:1300,
+               onUpdate: invalidate
+          });
+
+          return () => animation.pause();
+     }, [active, invalidate]);
 
      useFrame((_, delta) => {
           if (materialRef.current) {
@@ -137,6 +156,7 @@ export const ConeLaser = forwardRef((props, ref) => {
           <mesh ref={ref} {...restProps}>
                <coneGeometry
                     args={[radius, height, radialSegments, heightSegments, false, 0, thetaLength]}
+                    // МЫ УБРАЛИ self.translate(), позиция вернется в норму!
                />
                <rainbowLaserMaterial
                     ref={materialRef}

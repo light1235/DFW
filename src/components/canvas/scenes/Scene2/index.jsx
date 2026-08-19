@@ -364,7 +364,7 @@ const SceneTwo = () => {
 
                <Stars radius={100} depth={50} count={5000} factor={4} saturation={2} fade speed={3} />
                <CameraRig activeId={activeId} controlsRef={controlsRef} />
-               <OrbitControls ref={controlsRef} makeDefault />
+               {/*<OrbitControls ref={controlsRef}  />*/}
                <ConveyorBelt />
 
                <mesh position={[0, -0.5, -45]}>
@@ -393,8 +393,9 @@ export function PortalToSceneTwo() {
      return (
           <mesh position={[1.393, 7.104, -10.86]} rotation={[0, -115 * (Math.PI / 180), 0]}>
                <circleGeometry args={[0.26, 64]} />
-               <MeshPortalMaterial blend={1}>
-                    <PerspectiveCamera makeDefault position={[0, 0, 10]} />
+               <MeshPortalMaterial blend={0}>
+                    {/*<PerspectiveCamera  position={[0, 0, 10]} />*/}
+                    <PerspectiveCamera makeDefault={false} position={[0, 0, 10]} />
                     <SceneTwo />
                </MeshPortalMaterial>
           </mesh>

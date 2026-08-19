@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Center, Text3D } from '@react-three/drei';
 import * as THREE from 'three';
 
-function AnimatedText({targetOpacity }) {
+function AnimatedText({targetOpacity,active }) {
 
      const materialRef1 = useRef()
      const materialRef2 = useRef()
@@ -12,7 +12,8 @@ function AnimatedText({targetOpacity }) {
           setTimeout(() => {
                if (materialRef1.current) materialRef1.current.opacity = targetOpacity ?? 1
                if (materialRef2.current) materialRef2.current.opacity = targetOpacity ?? 1
-          },2400)
+               active(true)
+          },5700)
 
      }, [targetOpacity])
 
@@ -62,7 +63,7 @@ function AnimatedText({targetOpacity }) {
 }
 
 
-export default function FlagText() {
+export default function FlagText({active}) {
 
      const groupRef = useRef()
      const [arrowCount, setArrowCount] = useState(0)
@@ -146,7 +147,7 @@ export default function FlagText() {
                                                 emissive="#ffc280"
                                                emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
                     </Text3D>
-                    <AnimatedText />
+                    <AnimatedText active={active} />
                </Center>
           </group>
      );

@@ -6,18 +6,16 @@ import {
      OrthographicCamera,
      PerspectiveCamera, ScrollControls,
      Stars, Text3D,
-     useGLTF, useScroll,
+     useGLTF,
      useTexture
 } from "@react-three/drei";
 import * as THREE from "three";
 import {useFrame, useThree} from "@react-three/fiber";
 import {MathUtils} from "three";
-import {ModelFortress7} from "./model.jsx";
-import {ModelFort} from "../../../Sun.jsx";
 import { gsap } from 'gsap';
 
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import SplineEditor from "../../CameraController.jsx";
+import {ModelFort} from "./model.jsx";
 
 // Регистрируем плагин ScrollTrigger
 gsap.registerPlugin(ScrollTrigger);
@@ -413,7 +411,6 @@ function ModelGrate() {
 
 
 
-
 function ModelBox() {
      // Путь указывается от папки public
      const { scene } = useGLTF('model/scene3/scene-box.glb');
@@ -460,9 +457,10 @@ export function CameraLogger() {
      return null;
 }
 
-const text = "Scroll to explore";
 
-function AnimatedText() {
+
+export function AnimatedText({ text = "Scroll to explore    ", visible = false }) {
+     const groupRef = useRef();
      const lettersRef = useRef([]);
      const fontPath = "/zb.json";
 
@@ -471,35 +469,35 @@ function AnimatedText() {
      );
 
      useEffect(() => {
-          const tl = gsap.timeline({ repeat: -1 });
+          if (!visible) return;
 
-          tl.fromTo(animationData.current,
-               {
-                    y: -2,
-                    opacity: 0
-               },
-               {
-                    y: 0,
-                    opacity: 1,
-                    duration: 1,
-                    ease: "power2.out",
-                    stagger: 0.05
-               }
-          )
-               .to({}, { duration: 1.5 });
+          const ctx = gsap.context(() => {
+               gsap.timeline({ repeat: -1 })
+                    .fromTo(animationData.current,
+                         { y: -2, opacity: 0 },
+                         {
+                              y: 0,
+                              opacity: 1,
+                              duration: 1,
+                              ease: "power2.out",
+                              stagger: 0.05
+                         }
+                    )
+                    .to({}, { duration: 1.5 });
+          });
 
-          return () => tl.kill();
-     }, []);
+          return () => ctx.revert();
+     }, [visible]);
 
      useFrame(() => {
+          if (!visible) return;
+
           lettersRef.current.forEach((target, index) => {
                if (!target) return;
-
                const data = animationData.current[index];
                if (!data) return;
 
                target.position.y = data.y;
-
                const mesh = target.children[0];
                if (mesh && mesh.material) {
                     mesh.material.opacity = data.opacity;
@@ -507,7 +505,6 @@ function AnimatedText() {
           });
      });
 
-     const letters = text.split("");
      const textOptions = {
           size: 0.5,
           height: 0.2,
@@ -520,59 +517,50 @@ function AnimatedText() {
      const rotY = MathUtils.degToRad(-41.6);
      const rotZ = MathUtils.degToRad(0.4);
 
-     // =========================================================
-     // НАСТРОЙКА ОТСТУПОВ МЕЖДУ БУКВАМИ
-     // =========================================================
      let currentXOffset = 0;
-     const gap = 0.12; // <-- Увеличьте это число (например, до 0.15), чтобы раздвинуть буквы еще сильнее
+     const gap = 0.12;
 
      return (
-          <Center position={[183.0, 202.77, 24.08]} rotation={[rotX, rotY, rotZ]}>
-               {letters.map((char, index) => {
-                    const posX = currentXOffset;
+          <group ref={groupRef} visible={visible}>
+               <Center position={[183.0, 202.77, 24.08]} rotation={[rotX, rotY, rotZ]}>
+                    {text.split("").map((char, index) => {
+                         const posX = currentXOffset;
+                         let charWidth = 0.38;
 
-                    // Базовая ширина самих символов
-                    let charWidth = 0.38;
+                         if (char === " ") charWidth = 0.25;
+                         else if (char === "l" || char === "i" || char === "t") charWidth = 0.16;
+                         else if (char === "m" || char === "w") charWidth = 0.55;
 
-                    if (char === " ") charWidth = 0.25;
-                    else if (char === "l" || char === "i" || char === "t") charWidth = 0.16;
-                    else if (char === "m" || char === "w") charWidth = 0.55;
+                         currentXOffset += charWidth + gap;
 
-                    // Прибавляем ширину буквы И наш кастомный отступ (gap) для следующего символа
-                    currentXOffset += charWidth + gap;
+                         if (char === " ") {
+                              return <group key={index} position={[posX, 0, 0]} />;
+                         }
 
-                    if (char === " ") {
-                         return <group key={index} position={[posX, 0, 0]} />;
-                    }
-
-                    return (
-                         <group
-                              key={index}
-                              ref={(el) => (lettersRef.current[index] = el)}
-                              position={[posX, 0, 0]}
-                         >
-                              <Text3D
-                                   font={fontPath}
-                                   {...textOptions}
-                                   position={[0, 0, 0]}
+                         return (
+                              <group
+                                   key={index}
+                                   ref={(el) => (lettersRef.current[index] = el)}
+                                   position={[posX, 0, 0]}
                               >
-                                   {char}
-                                   <meshStandardMaterial
-                                        color="#ffc280"
-                                        roughness={0.3}
-                                        metalness={0.1}
-                                        transparent
-                                        opacity={0}
-                                        toneMapped={false}
-                                   />
-                              </Text3D>
-                         </group>
-                    );
-               })}
-          </Center>
+                                   <Text3D font={fontPath} {...textOptions} position={[0, 0, 0]}>
+                                        {char}
+                                        <meshStandardMaterial
+                                             color="#ffc280"
+                                             roughness={0.3}
+                                             metalness={0.1}
+                                             transparent
+                                             opacity={0}
+                                             toneMapped={false}
+                                        />
+                                   </Text3D>
+                              </group>
+                         );
+                    })}
+               </Center>
+          </group>
      );
 }
-
 
 const curve = new THREE.CatmullRomCurve3([
      new THREE.Vector3( 178.610, 199.770, 29.080 ),
@@ -596,7 +584,7 @@ const curve = new THREE.CatmullRomCurve3([
      useEffect(() => {
           const removeListeners = () => {
                window.removeEventListener('wheel', handleStartAnimation);
-               window.removeEventListener('click', handleStartAnimation);
+               // window.removeEventListener('click', handleStartAnimation);
           };
 
           const handleStartAnimation = () => {
@@ -651,7 +639,7 @@ const curve = new THREE.CatmullRomCurve3([
           };
 
           window.addEventListener('wheel', handleStartAnimation, { passive: true });
-          window.addEventListener('click', handleStartAnimation);
+          // window.addEventListener('click', handleStartAnimation);
 
           return () => {
                removeListeners();
@@ -719,6 +707,8 @@ const curve = new THREE.CatmullRomCurve3([
 
                 // Поворачиваем камеру к вычисленной цели
                 camera.lookAt(lookAtTarget);
+
+
            }
       });
 
@@ -733,7 +723,7 @@ const curve = new THREE.CatmullRomCurve3([
 // Главный экспорт компонента шлема
 export function AnimatedHelmet({scroll}) {
      return (
-          // Suspense гарантирует, что код анимации не выполнится раньше, чем модель полностью загрузится
+
           <Suspense fallback={null}>
                <HelmetController scroll={scroll} />
           </Suspense>
@@ -778,8 +768,6 @@ const ExcavationPitScene = () => {
 
                {/*<CameraLogger />*/}
                <ModelBox />
-               {/*<ModelFortress />*/}
-               {/*<ModelFortress7 />*/}
                <ModelFort scroll={setScrollText} helm={setHelmAnimation} portal={setShowPortal} />
 
                <ModelIndustrial />
@@ -787,11 +775,8 @@ const ExcavationPitScene = () => {
                <ModelGrate />
                <ModelDamaged />
 
-               {/*<AnimatedText />*/}
-               {scrollText && <AnimatedText/>}
+               <AnimatedText visible={scrollText} />
                {helmAnimation &&  <AnimatedHelmet scroll={setScrollText} />}
-
-               {/*<ModelHelmet />*/}
 
                <LedLine position={[241.2, 212, 15]} rotation={[0, 2.6, 0]} />
                <LedLine position={[173, 212, -38]} rotation={[0, 2.6, 0]} />
@@ -801,5 +786,5 @@ const ExcavationPitScene = () => {
 };
 
 export default ExcavationPitScene;
-// <PerspectiveCamera makeDefault position={[0, 0, 10]} />
+
 

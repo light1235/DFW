@@ -25,6 +25,8 @@ import InteractivePoster from "./components/canvas/scenes/Scene5/index.jsx";
 import Scene6 from "./components/canvas/scenes/Scene6/index.jsx";
 import Scene1 from "./components/canvas/scenes/Scene1/index.jsx";
 import Scene3 from "./components/canvas/scenes/Scene3/index.jsx";
+import {Perf} from "r3f-perf";
+import { Stats } from '@react-three/drei'
 
 // import Lights from "./components/canvas/scenes/Scene1/Lights.jsx";
 function Lights() {
@@ -80,20 +82,24 @@ export default function App() {
   return (
     <div className="main-wrapper" style={{ height: '100vh', width: '100vw',background: '#0A0015',overflowY: 'auto',overflowX: 'hidden', position:'relative'  }}>
          <HeaderSection />
-      {/* Фиксированный Canvas для 4 сцен */}
+
       <Canvas className="fixed-canvas"
               camera={{ position: [0, 10, 45], fov: 30 }}
               shadows
               gl={{ antialias: true, toneMappingExposure: 1.15 }}
       >
-        {/*<SceneManager />*/}
+
+
         <color attach="background" args={['#1a1a1a']} />
         <fog attach="fog" args={['#1a1a1a', 15, 80]} />
-        {/*<fog attach="fog" args={['#1a1a1a', 15, 50]} />*/}
+
+
+           {/*<SceneManager />*/}
         {/*<OrbitControls />*/}
         {/*   <ScrollCameraPath />*/}
            {/*<Environment preset="forest" background blur={0.4}/>*/}
-        <Scene1 />
+        {/*<Lights />*/}
+        {/*<Scene1 />*/}
         {/*   <Scene6 />*/}
         {/*   <Scene2 />*/}
            <Scene3 />
@@ -109,11 +115,10 @@ export default function App() {
         {/*        fadeDuration={0.7}*/}
         {/*        onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
         {/*   />*/}
-        {/*   <PortalToSceneTwo />*/}
+           <PortalToSceneTwo />
            {/*     <GoldenTwilightScene />*/}
 
           {/*<InteractivePoster />*/}
-
         <EffectComposer>
           <Bloom intensity={0.2} luminanceThreshold={0.4}
             luminanceSmoothing={0.5} mipmapBlur />
@@ -136,6 +141,7 @@ export default function App() {
                   offset={new Vector2(0.001, 0.001)} // Сдвиг красного и синего каналов
              />
         </EffectComposer>
+           <Stats   />
       </Canvas>
 
       {/* Проставка для виртуального скролла WebGL */}
