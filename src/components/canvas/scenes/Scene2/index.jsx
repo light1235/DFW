@@ -1,15 +1,19 @@
-import React, { useRef, useMemo, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
+import React, {useRef, useMemo, useState, useLayoutEffect, useEffect, Suspense} from 'react';
+import {useFrame, useThree} from '@react-three/fiber';
 import {
      Html,
      MeshPortalMaterial,
      OrbitControls,
      PerspectiveCamera,
-     Stars,
+     Stars, useFont,
      useGLTF,
      useMatcapTexture
 } from "@react-three/drei";
 import * as THREE from "three";
+import { animate } from 'animejs';
+import 'animejs/adapters/three';
+import {AnimatedText} from "../Scene3/index.jsx";
+
 
 export function AnimatedTorus({ scale = 0.5, position = [0, 0, 0], rotation = [0, 0, 0] }) {
      const meshRef = useRef();
@@ -121,25 +125,30 @@ const MODELS_DATA = [
      }
 ];
 
-function InteractiveModel({ config, isActive, onClick }) {
+export function InteractiveModel({ config, isActive, onClick }) {
      const { scene } = useGLTF(config.url);
      const [matcapTexture] = useMatcapTexture('9B9994_E1E0DB_474643_544C4C', 1024);
-     const groupRef = useRef();
-     const meshRef = useRef();
+
+     const floatGroupRef = useRef();
+     const spinGroupRef = useRef();
+     const scaleGroupRef = useRef();
+     const currentOffsetY = useRef(0);
+
+     // 1. Изоляция сцены для предотвращения конфликтов GLTF-кэша
+     const clonedScene = useMemo(() => scene.clone(true), [scene]);
 
      const matcapMaterial = useMemo(() => {
           return new THREE.MeshMatcapMaterial({ matcap: matcapTexture });
      }, [matcapTexture]);
 
-     useMemo(() => {
-          scene.traverse((child) => {
+     // 2. Применение материала через useLayoutEffect
+     useLayoutEffect(() => {
+          clonedScene.traverse((child) => {
                if (child.isMesh) {
                     child.material = matcapMaterial;
                }
           });
-     }, [scene, matcapMaterial]);
-
-     const currentOffsetY = useRef(0);
+     }, [clonedScene, matcapMaterial]);
 
      const floatParams = useMemo(() => ({
           speed: 1.1 + (config.id * 0.37) % 0.8,
@@ -148,42 +157,57 @@ function InteractiveModel({ config, isActive, onClick }) {
      }), [config.id]);
 
      useFrame((state, delta) => {
+          const safeDelta = Math.min(delta, 0.1);
           const t = state.clock.getElapsedTime();
+
+          // Остановка плавания при активном состоянии
           const targetOffsetY = isActive
                ? 0
                : Math.sin(t * floatParams.speed + floatParams.phase) * floatParams.amplitude;
 
-          currentOffsetY.current = THREE.MathUtils.lerp(currentOffsetY.current, targetOffsetY, delta * 4);
+          currentOffsetY.current = THREE.MathUtils.lerp(currentOffsetY.current, targetOffsetY, safeDelta * 4);
 
-          if (groupRef.current) {
-               groupRef.current.position.set(
-                    config.position[0],
-                    config.position[1] + currentOffsetY.current,
-                    config.position[2]
-               );
+          if (floatGroupRef.current) {
+               floatGroupRef.current.position.y = currentOffsetY.current;
           }
 
-          if (isActive && meshRef.current) {
-               meshRef.current.rotation.y += delta * 0.5;
+          // Анимация вращения вокруг своей оси при активности
+          if (spinGroupRef.current && isActive) {
+               spinGroupRef.current.rotation.y += safeDelta * 0.6;
+          }
+
+          // Плавное масштабирование активного объекта
+          if (scaleGroupRef.current) {
+               const targetScale = isActive ? config.scale * 1.15 : config.scale;
+               const currentScale = scaleGroupRef.current.scale.x;
+               const lerpedScale = THREE.MathUtils.lerp(currentScale, targetScale, safeDelta * 6);
+               scaleGroupRef.current.scale.setScalar(lerpedScale);
           }
      });
 
      return (
-          <group ref={groupRef} position={config.position}>
-               <mesh
-                    ref={meshRef}
-                    rotation={config.rotation}
-                    onClick={(e) => {
-                         e.stopPropagation();
-                         onClick(config.id);
-                    }}
-               >
-                    <primitive object={scene} scale={config.scale} position={[0, 0, 0]} />
-               </mesh>
+          // Базовая статическая позиция из конфига
+          <group position={config.position}>
+               {/* Группа для плавного плавания по Y */}
+               <group ref={floatGroupRef}>
+                    {/* Группа для поворота и масштабирования */}
+                    <group rotation={config.rotation}>
+                         <group ref={scaleGroupRef}>
+                              <group
+                                   ref={spinGroupRef}
+                                   onClick={(e) => {
+                                        e.stopPropagation();
+                                        onClick(config.id);
+                                   }}
+                              >
+                                   <primitive object={clonedScene} />
+                              </group>
+                         </group>
+                    </group>
+               </group>
           </group>
      );
 }
-
 function CameraRig({ activeId, controlsRef }) {
      const dummyCamPos = useMemo(() => new THREE.Vector3(), []);
      const dummyTarget = useMemo(() => new THREE.Vector3(), []);
@@ -282,17 +306,56 @@ export function ConveyorBelt() {
      );
 }
 
-const LabScene = ({orbit}) => {
-     const [activeId, setActiveId] = useState(null);
+
+
+const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blend, camera }) => {
+     const [activeId, setActiveId] = useState(2);
+     const [cameraFocusId, setCameraFocusId] = useState(null);
      const controlsRef = useRef();
 
      const handleModelClick = (id) => {
           setActiveId((prev) => (prev === id ? null : id));
+          setCameraFocusId((prev) => (prev === id ? null : id));
+     };
+
+     const handleBack = (e) => {
+          e.stopPropagation();
+          setActiveId(null);
+          setCameraFocusId(null);
      };
 
      const activeModelData = useMemo(() => {
           return MODELS_DATA.find((m) => m.id === activeId);
      }, [activeId]);
+
+     useEffect(() => {
+          setTimeout(() => {
+
+          }, 6000);
+     });
+
+     function handleStartAnimation() {
+          if (animated) {
+               orbitChange(false);
+               animate(portalCamera.current.position, {
+                    z: [10, -3],
+                    y: [0, 1.5],
+                    duration: 3000,
+                    alternate: true,
+                    ease: 'inExpo',
+                    onBegin: () => {
+                         setTimeout(() => {
+                              blend(0);
+                              camera(false);
+                              orbitChange(false);
+                              transition();
+                         }, 2900);
+                    },
+               });
+          }
+     }
+
+     window.addEventListener('wheel', handleStartAnimation, { passive: true, once: true });
 
      return (
           <>
@@ -312,7 +375,7 @@ const LabScene = ({orbit}) => {
                {activeModelData && (
                     <>
                          <AnimatedTorus
-                              scale={[0.15, 0.15, 0.03]} // [X, Y, Z] — уменьшение Z сплющит торус по высоте
+                              scale={[0.15, 0.15, 0.03]}
                               position={[
                                    activeModelData.position[0],
                                    activeModelData.position[1] - 1.0,
@@ -321,51 +384,73 @@ const LabScene = ({orbit}) => {
                               rotation={[Math.PI / 2, 0, 0]}
                          />
 
-                         <Html
-                              position={[
-                                   activeModelData.position[0] + 1.2,
-                                   activeModelData.position[1] + 0.5,
-                                   activeModelData.position[2]
-                              ]}
-                              center
-                              distanceFactor={10}
-                         >
-                              <div style={{
-                                   background: 'white',
-                                   backdropFilter: 'blur(8px)',
-                                   border: '1px solid #A1A1A4',
-                                   borderRadius: '8px',
-                                   padding: '10px 12px',
-                                   color: '#A1A1A4',
-                                   width: '240px',
-                                   fontFamily: 'Space Grotesk',
-                                   // font-family: "Space Grotesk", sans-serif;
-                                   fontSize: '7.7px',
-                                   lineHeight: '1.4',
-                                   pointerEvents: 'none',
-                                   boxShadow: '12px 8px 32px rgba(0,0,0,0.5)'
-                              }}>
-                                   <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#0088cc', fontSize: '8.4px' }}>
-                                        {activeModelData.annotation.title}
+                         {orbit && (
+                              <Html
+                                   position={[
+                                        activeModelData.position[0] + 1.2,
+                                        activeModelData.position[1] + 0.5,
+                                        activeModelData.position[2]
+                                   ]}
+                                   center
+                                   distanceFactor={10}
+                              >
+                                   <div style={{
+                                        position: 'relative',
+                                        background: 'white',
+                                        backdropFilter: 'blur(8px)',
+                                        border: '1px solid #A1A1A4',
+                                        borderRadius: '8px',
+                                        padding: '10px 12px 10px 28px',
+                                        color: '#A1A1A4',
+                                        width: '240px',
+                                        fontFamily: 'Space Grotesk',
+                                        fontSize: '7.7px',
+                                        lineHeight: '1.4',
+                                        pointerEvents: 'auto',
+                                        boxShadow: '12px 8px 32px rgba(0,0,0,0.5)'
+                                   }}>
+                                        <button
+                                             onClick={handleBack}
+                                             style={{
+                                                  position: 'absolute',
+                                                  left: '8px',
+                                                  top: '8px',
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  cursor: 'pointer',
+                                                  padding: 0,
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center'
+                                             }}
+                                             title="Back"
+                                        >
+                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0088cc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                  <path d="M19 12H5" />
+                                                  <path d="M12 19l-7-7 7-7" />
+                                             </svg>
+                                        </button>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#0088cc', fontSize: '8.4px' }}>
+                                             {activeModelData.annotation.title}
+                                        </div>
+                                        <p style={{ margin: '0 0 5px 0' }}>
+                                             <strong>Material:</strong> {activeModelData.annotation.material}
+                                        </p>
+                                        <p style={{ margin: '0 0 5px 0' }}>
+                                             <strong>Construction type:</strong> {activeModelData.annotation.construction}
+                                        </p>
+                                        <p style={{ margin: '0' }}>
+                                             <strong>Load:</strong> {activeModelData.annotation.load}
+                                        </p>
                                    </div>
-                                   <p style={{ margin: '0 0 5px 0' }}>
-                                        <strong>Material:</strong> {activeModelData.annotation.material}
-                                   </p>
-                                   <p style={{ margin: '0 0 5px 0' }}>
-                                        <strong>Construction type:</strong> {activeModelData.annotation.construction}
-                                   </p>
-                                   <p style={{ margin: '0' }}>
-                                        <strong>Load:</strong> {activeModelData.annotation.load}
-                                   </p>
-                              </div>
-                         </Html>
+                              </Html>
+                         )}
                     </>
                )}
 
                <Stars radius={100} depth={50} count={5000} factor={4} saturation={2} fade speed={3} />
-               <CameraRig activeId={activeId} controlsRef={controlsRef} />
-               {orbit &&   <OrbitControls ref={controlsRef}  />}
-
+               <CameraRig activeId={cameraFocusId} controlsRef={controlsRef} />
+               {orbit && <OrbitControls ref={controlsRef} />}
                <ConveyorBelt />
 
                <mesh position={[0, -0.5, -45]}>
@@ -383,45 +468,67 @@ const LabScene = ({orbit}) => {
                     <ringGeometry args={[10, 10.3, 32]} />
                     <meshBasicMaterial color={'black'} transparent opacity={0.4} />
                </mesh>
+               <AnimatedText visible={animated} size={0.6} position={[-0.3, 5.9, -6.1]} text={'Scroll to next '} rotation={[0, 0, 0]} TextGap={0.48} />
+
                <fog attach="fog" args={['#031427', 10, 55]} />
           </>
      );
 };
-
 export default LabScene;
+useFont.preload('/zb.json');
 
-export function PortalToSceneTwo() {
+export function PortalToSceneTwo({onTransitionComplete,excCamera}) {
      const [blend, setBlend] = useState(0);
      const [cameraDefault, setCameraDefault] = useState(false);
      const [orbit, setOrbit] = useState(false);
+     const meshRef = useRef(null);
+     const cameraRef = useRef();
+     const [animateText, setAnimateText] = useState(false);
 
-     const handlePointerOver = (e) => {
-          e.stopPropagation()
-          document.body.style.cursor = 'pointer'
-          setTimeout(() => {
-               document.body.style.cursor = 'auto'
-          })
-     }
+     // const handlePointerOver = (e) => {
+     //      e.stopPropagation()
+     //      // document.body.style.cursor = 'pointer'
+     //
+     // }
+     //
+     // const handlePointerOut = () => {
+     //      // document.body.style.cursor = 'auto'
+     // }
 
-     const handlePointerOut = () => {
-          document.body.style.cursor = 'auto'
-     }
+     const isAnimating = useRef(false);
 
      const goToScene = () => {
-          console.log("123");
-          setBlend(1)
-          setCameraDefault(true);
-          setOrbit(true)
+
+          if (isAnimating.current) return;
+          isAnimating.current = true;
+
+          document.body.style.cursor = 'auto';
+          animate(meshRef.current, {
+               scale: [1, 3],
+               duration: 2000,
+               ease: 'inOutExpo',
+               onComplete: () => {
+                    setBlend(1);
+                    setCameraDefault(true);
+                    setOrbit(true);
+                    isAnimating.current = false;
+
+                    setTimeout(() => {
+                         setAnimateText(true);
+                    },6000)
+               },
+          });
      };
 
+
+
      return (
-          <mesh position={[1.393, 7.104, -10.86]} rotation={[0, -115 * (Math.PI / 180), 0]} onClick={goToScene}   onPointerOver={handlePointerOver}
-                onPointerOut={handlePointerOut}>
+          <mesh ref={meshRef} position={[1.393, 7.104, -10.86]}  rotation={[0, -115 * (Math.PI / 180), 0]} onClick={goToScene} >
                <circleGeometry args={[0.26, 64]} />
                <MeshPortalMaterial blend={blend}>
                     {/*<PerspectiveCamera  position={[0, 0, 10]} />*/}
-                    <PerspectiveCamera makeDefault={cameraDefault} position={[0, 0, 10]} />
-                    <LabScene orbit={orbit} />
+                    <PerspectiveCamera ref={cameraRef} makeDefault={cameraDefault} position={[0, 0, 10]} />
+                     <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText} excCamera={excCamera}  />
                </MeshPortalMaterial>
           </mesh>
      );

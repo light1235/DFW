@@ -354,24 +354,38 @@ function Monoliths() {
      }, []);
 
      // Анимация роста от 0% до 100% при появлении
+     const START_DELAY = 2.0;
+
      useFrame((_, delta) => {
           animTime.current += delta;
 
+          // 1. Если общее время меньше глобальной задержки, ничего не делаем
+          if (animTime.current < START_DELAY) {
+               return;
+          }
+
+          // 2. Вычитаем глобальную задержку, чтобы отсчет анимации монолитов начался с 0
+          const globalElapsed = animTime.current - START_DELAY;
+
           monolithData.forEach((item, index) => {
                const meshGroup = meshRefs.current[index];
-               if (meshGroup) {
-                    const duration = 3.2; // Длительность анимации 1.6 сек
-                    const elapsed = Math.max(0, animTime.current - item.delay);
-                    const rawProgress = Math.min(1, elapsed / duration);
+               if (!meshGroup) return;
 
-                    // Плавная кубическая функция easing (ease-out)
-                    const easeOutProgress = 1 - Math.pow(1 - rawProgress, 3);
+               // 3. Считаем время с учетом индивидуального каскадного дилея
+               const elapsed = globalElapsed - item.delay;
 
-                    meshGroup.scale.y = THREE.MathUtils.lerp(meshGroup.scale.y, easeOutProgress, delta * 8);
+               if (elapsed <= 0) {
+                    meshGroup.scale.y = 0;
+                    return;
                }
+
+               const duration = 1.6; // Длительность роста одного монолита в секундах
+               const rawProgress = Math.min(1, elapsed / duration);
+               const easeOutProgress = 1 - Math.pow(1 - rawProgress, 3);
+
+               meshGroup.scale.y = easeOutProgress;
           });
      });
-
      return (
           <group position={[0, 0, 0]}>
                {monolithData.map((item, index) => (
@@ -509,25 +523,6 @@ export default function GoldenMonolithScene() {
                <CloudLayer />
                <CameraController />
                {/* Камера и управление OrbitControls */}
-               {/*<OrbitControls*/}
-               {/*     enablePan*/}
-               {/*     enableZoom*/}
-               {/*     enableRotate*/}
-               {/*     rotateSpeed={0.8}*/}
-               {/*     minDistance={4}*/}
-               {/*     maxDistance={45}*/}
-               {/*     target={[0, 6.5, 0]}*/}
-               {/*/>*/}
-               {/*<Float*/}
-               {/*     floatingRange={[-1.2, 1.2]}  // Амплитуда движения по Y*/}
-               {/*     speed={1.5}                  // Скорость анимации*/}
-               {/*     floatIntensity={4}           // Множитель высоты покачивания*/}
-               {/*     rotationIntensity={0.2}      // Легкий наклон при парении (по желанию)*/}
-               {/*>*/}
-               {/*     <group position={[9, 2, 2]} rotation={[Math.PI / 4, 0, 0]} scale={0.5}>*/}
-               {/*          <ExtrudedArrow />*/}
-               {/*     </group>*/}
-               {/*</Float>*/}
 
                <Float
                     floatingRange={[-0.2, 0.2]}  // Амплітуда руху по Y
@@ -545,10 +540,6 @@ export default function GoldenMonolithScene() {
                <EffectComposer>
                     <Bloom intensity={0.8} luminanceThreshold={0.75} luminanceSmoothing={0.85} mipmapBlur />
                     <Vignette eskil={false} offset={0.2} darkness={0.8} />
-                    {/*<Scanline*/}
-                    {/*     blendFunction={BlendFunction.OVERLAY} // blend mode*/}
-                    {/*     density={1.25} // scanline density*/}
-                    {/*/>*/}
                </EffectComposer>
           </>
      );

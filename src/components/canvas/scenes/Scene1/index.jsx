@@ -217,12 +217,13 @@ const ExpoScene = () => {
      })
 
   return (
-    <>
+    <group visible={true}>
+
          <CameraParallax intensity={1} factor={0.05} />
       <group position={[-6, 5, 16]} rotation={[-0.1, 0, 0]}>
         <FlagText active={setActiveScrollCamera} />
       </group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]} >
         <planeGeometry args={[60, 60, 64, 64]} />
         <shaderMaterial
           ref={materialRef}
@@ -253,8 +254,7 @@ const ExpoScene = () => {
            </group>
            {activeScrollCamera &&   <ScrollCameraPath portal={setPortalTExt} />}
       </mesh>
-    </>
-
+    </group>
   );
 };
 

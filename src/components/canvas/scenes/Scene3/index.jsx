@@ -456,10 +456,14 @@ export function CameraLogger() {
 
      return null;
 }
+useGLTF.preload('model/scene3/scene-box.glb')
 
 
-
-export function AnimatedText({ text = "Scroll to explore    ", visible = false }) {
+export function AnimatedText({ text = "Scroll to explore    ", visible = false,size, position=[183.0, 202.77, 24.08],rotation = [
+     MathUtils.degToRad(0.5),
+     MathUtils.degToRad(-41.6),
+     MathUtils.degToRad(0.4)
+], TextGap = 0.38 } ) {
      const groupRef = useRef();
      const lettersRef = useRef([]);
      const fontPath = "/zb.json";
@@ -506,26 +510,26 @@ export function AnimatedText({ text = "Scroll to explore    ", visible = false }
      });
 
      const textOptions = {
-          size: 0.5,
+          size: size,
           height: 0.2,
           curveSegments: 12,
           lineHeight: 0.7,
           letterSpacing: 0
      };
 
-     const rotX = MathUtils.degToRad(0.5);
-     const rotY = MathUtils.degToRad(-41.6);
-     const rotZ = MathUtils.degToRad(0.4);
+     // const rotX = MathUtils.degToRad(0.5);
+     // const rotY = MathUtils.degToRad(-41.6);
+     // const rotZ = MathUtils.degToRad(0.4);
 
      let currentXOffset = 0;
      const gap = 0.12;
-
+     // 183.0, 202.77, 24.08
      return (
           <group ref={groupRef} visible={visible}>
-               <Center position={[183.0, 202.77, 24.08]} rotation={[rotX, rotY, rotZ]}>
+               <Center position={position} rotation={rotation}>
                     {text.split("").map((char, index) => {
                          const posX = currentXOffset;
-                         let charWidth = 0.38;
+                         let charWidth = TextGap;
 
                          if (char === " ") charWidth = 0.25;
                          else if (char === "l" || char === "i" || char === "t") charWidth = 0.16;
@@ -543,7 +547,7 @@ export function AnimatedText({ text = "Scroll to explore    ", visible = false }
                                    ref={(el) => (lettersRef.current[index] = el)}
                                    position={[posX, 0, 0]}
                               >
-                                   <Text3D font={fontPath} {...textOptions} position={[0, 0, 0]}>
+                                   <Text3D font={fontPath} {...textOptions} position={[0, 0, 0]} >
                                         {char}
                                         <meshStandardMaterial
                                              color="#ffc280"
@@ -730,7 +734,7 @@ export function AnimatedHelmet({scroll}) {
      );
 }
 
-const ExcavationPitScene = () => {
+const ExcavationPitScene = ({active}) => {
 
      const [scrollText, setScrollText] = useState(false);
      const [helmAnimation, setHelmAnimation] = useState(false);
@@ -740,9 +744,10 @@ const ExcavationPitScene = () => {
      const rotZ = MathUtils.degToRad(0.4)
 
 
+
      return (
           <>
-               <PerspectiveCamera makeDefault position={[178.61, 199.77, 29.08]} fov={70} far={10000}  rotation={[rotX, rotY, rotZ]} />
+               <PerspectiveCamera makeDefault={true} position={[178.61, 199.77, 29.08]} fov={70} far={10000}  rotation={[rotX, rotY, rotZ]} />
                {/*<OrthographicCamera makeDefault position={[0, 0, 100]} zoom={1} />*/}
                <ambientLight intensity={2.6} />
                <directionalLight
@@ -775,7 +780,7 @@ const ExcavationPitScene = () => {
                <ModelGrate />
                <ModelDamaged />
 
-               <AnimatedText visible={scrollText} />
+               <AnimatedText visible={scrollText}  size={0.5} />
                {helmAnimation &&  <AnimatedHelmet scroll={setScrollText} />}
 
                <LedLine position={[241.2, 212, 15]} rotation={[0, 2.6, 0]} />

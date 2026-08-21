@@ -57,7 +57,7 @@ export default function App() {
     <div className="main-wrapper" style={{ height: '100vh', width: '100vw',background: '#0A0015',overflowY: 'auto',overflowX: 'hidden', position:'relative'  }}>
          <HeaderSection />
 
-      <Canvas className="fixed-canvas"
+      <Canvas className="fixed-canvas z-30"
               camera={{ position: [0, 10, 45], fov: 30 }}
               shadows
               gl={{ antialias: true, toneMappingExposure: 1.15 }}
@@ -68,18 +68,18 @@ export default function App() {
 
            {/*<OrbitControls />*/}
            <SceneManager />
-           <VHSScreenGlitchR3F
-                active={loading}
-                duration={2.5}
-                fadeDuration={0.1}
-                intensity={1.0}
-                onFinished={() => console.log('Заставка полностью исчезла!')}
-           />
-        {/*   <MatrixRainScreenR3F*/}
-        {/*        active={loading}*/}
-        {/*        fadeDuration={0.7}*/}
-        {/*        onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
-        {/*   />*/}
+           {/*<VHSScreenGlitchR3F*/}
+           {/*     active={loading}*/}
+           {/*     duration={2.5}*/}
+           {/*     fadeDuration={0.1}*/}
+           {/*     intensity={1.0}*/}
+           {/*     onFinished={() => console.log('Заставка полностью исчезла!')}*/}
+           {/*/>*/}
+           {/*<MatrixRainScreenR3F*/}
+           {/*     active={loading}*/}
+           {/*     fadeDuration={0.7}*/}
+           {/*     onFinished={() => console.log('Matrix Rain полностью закрылся')}*/}
+           {/*/>*/}
 
            {/*     <GoldenTwilightScene />*/}
 
