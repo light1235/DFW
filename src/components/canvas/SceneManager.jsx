@@ -15,6 +15,7 @@ const SceneManager = ({poster, town}) => {
      const [expo, setExpo] = useState(true);
      const [monolith, setMonolith] = useState(false);
      const [monolithCamera, setMonolithCamera] = useState(false);
+     const [portalActive, setPortalActive] = useState(false);
 
      const handleTransition = () => {
           setExcavationActive(true);
@@ -25,6 +26,10 @@ const SceneManager = ({poster, town}) => {
            setMonolithCamera(true)
           setMonolith(true)
      };
+
+     useEffect(() =>{
+         setPortalActive(true)
+     },[portalActive])
 
 
      return (
@@ -38,8 +43,8 @@ const SceneManager = ({poster, town}) => {
                          onFinished={() => console.log('Заставка полностью исчезла!')}
                     />
                     {expo && <ExpoScene  />}
-                    {!excavationActive && <PortalToSceneTwo onTransitionComplete={handleTransition}   />}
-                    {excavationActive &&  <ExcavationPitScene monolith={transitionToMonolith} PitScene={setExcavationActive}  />}
+                    {!excavationActive && portalActive && <PortalToSceneTwo onTransitionComplete={handleTransition}   />}
+                    {excavationActive &&   <ExcavationPitScene monolith={transitionToMonolith} PitScene={setExcavationActive}  />}
                     {monolith && town  && <GoldenMonolithScene poster={poster} cameraMono={monolithCamera} />}
                     {monolith && <MatrixRainScreenR3F fadeDuration={0.7} active={true} />}
                     {/*<ExcavationPitScene   />*/}
