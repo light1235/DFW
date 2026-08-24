@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import {set} from "animejs";
 
-export function ModelFort({ scroll, helm,portal, ...props }) {
+export function ModelFort({ scroll, helm,portal,destroy, ...props }) {
      const { nodes, materials } = useGLTF('/model/scene3/fortress-cell.glb');
      const alphaTexture = useTexture('model/scene3/d2.jpg');
 
@@ -20,7 +20,7 @@ export function ModelFort({ scroll, helm,portal, ...props }) {
      const hasScrolled = useRef(false);
 
      const delayAnim1 = 4.8;             // ЗАДЕРЖКА для 1-й анимации (в секундах)
-     const durationAnim1 = 5.0;
+     const durationAnim1 = 3.5;
      const timerRef = useRef(0);         // Загальний таймер сцени
      const opsSpeed = 0.008;             // Швидкість зміни alphaTest
 
@@ -122,11 +122,13 @@ export function ModelFort({ scroll, helm,portal, ...props }) {
                               const t = Math.max(0, totalFallTime - mesh.fallDelay);
 
                               if (t > 0) {
-                                   // Считаем падение вниз по формуле: y = y0 - 0.5 * g * t^2
-                                   const currentY = mesh.originalPosition.y - (0.5 * (gravity / 15) * t * t);
-                                   //
-                                   // // Ограничиваем падение уровнем пола
-                                   mesh.position.y = Math.max(localFloorY, currentY);
+                                   // if (destroy) {
+                                        // Считаем падение вниз по формуле: y = y0 - 0.5 * g * t^2
+                                        const currentY = mesh.originalPosition.y - (0.5 * (gravity / 15) * t * t);
+                                        //
+                                        // // Ограничиваем падение уровнем пола
+                                        mesh.position.y = Math.max(localFloorY, currentY);
+                                   // }
                               }
                          }
                     });

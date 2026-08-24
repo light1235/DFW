@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, {useMemo, useRef, useEffect, useState} from 'react';
 import {useFrame, useThree} from '@react-three/fiber';
 import {OrbitControls, Environment, Outlines, Float} from '@react-three/drei';
 import {EffectComposer, Bloom, Vignette, Scanline} from '@react-three/postprocessing';
@@ -431,10 +431,10 @@ function CameraController() {
           <OrbitControls
                ref={controlsRef}
                enablePan
-               enableZoom
+               enableZoom={false} // 1. Вимикаємо зум сцени
                enableRotate
                rotateSpeed={0.8}
-               zoomSpeed={0.8}
+               // zoomSpeed більше не потрібен
                minDistance={4}
                maxDistance={45}
           />
@@ -442,7 +442,8 @@ function CameraController() {
 }
 
 export function ExtrudedArrow() {
-     const shape = useMemo(() => {
+     // Крок 1: Створюємо геометрію ОДИН раз і зберігаємо в пам'яті
+     const geometry = useMemo(() => {
           const s = new THREE.Shape();
           const sw = 1.4;
           const sh = 2.2;
@@ -463,47 +464,56 @@ export function ExtrudedArrow() {
           s.lineTo(-sw / 2, yJunc);
           s.closePath();
 
-          return s;
+          const extrudeSettings = {
+               depth: 0.7,
+               bevelEnabled: true,
+               bevelThickness: 0.22,
+               bevelSize: 0.18,
+               // Зменшено сегменти для більшої продуктивності:
+               bevelSegments: 4, // Було 8
+               steps: 1,         // Було 2 (для прямої стрілки 1 достатньо)
+               curveSegments: 12, // Було 16 (у вас прямі лінії, можна навіть менше)
+          };
+
+          return new THREE.ExtrudeGeometry(s, extrudeSettings);
      }, []);
 
-     const extrudeSettings = useMemo(() => ({
-          depth: 0.7,
-          bevelEnabled: true,
-          bevelThickness: 0.22,
-          bevelSize: 0.18,
-          bevelSegments: 8,
-          steps: 2,
-          curveSegments: 16,
-     }), []);
-
-     // Обязательный возврат JSX для React-компонента
+     // Крок 2: Передаємо готову геометрію через проп `geometry`
      return (
-          <mesh>
-               <extrudeGeometry args={[shape, extrudeSettings]} />
+          <mesh geometry={geometry}>
                <meshPhysicalMaterial
                     color="#e0f2fe"
                     roughness={0.1}
                     metalness={0.1}
                     clearcoat={0}
-                    transmission={0.85}
+                    // transmission={0.85}
                />
-               <Outlines thickness={0.08} color="#ffffff" />
+               {/*<Outlines thickness={0.08} color="#ffffff" />*/}
           </mesh>
      );
 } // <- Эта скобка отсутствовала
 
 // --- Главный экспортируемый компонент СЦЕНЫ (для вставки ВНУТРЬ вашего <Canvas>) ---
-export default function GoldenMonolithScene() {
+export default function GoldenMonolithScene({cameraMono,poster}) {
      const { camera } = useThree()
-
+     const [extrude, setExtrude] = useState(false);
+     //
      useEffect(() => {
-          // Меняем позицию и параметры напрямую
-          camera.position.set(0, -7.5, 9.5)
-          camera.fov = 52
+          // Выполнять установку параметров только если флаг активен
+          if (!cameraMono) return;
 
-          // Обязательно обновляем матрицу проекции после изменений
-          camera.updateProjectionMatrix()
-     }, [camera])
+          camera.position.set(0, -7.5, 9.5);
+          camera.fov = 52;
+          camera.updateProjectionMatrix();
+          setTimeout(() => {
+               poster(true)
+          },5500)
+          setTimeout(() => {
+               setExtrude(true);
+          },4000)
+
+     }, [camera, cameraMono,poster,extrude]);
+
      return (
           <>
                {/* Фон неба и звездное поле */}
@@ -517,12 +527,13 @@ export default function GoldenMonolithScene() {
                <Environment preset="night" environmentIntensity={0.8} />
 
                {/* Анимированные монолиты */}
-               <Monoliths />
+
 
                {/* Облака */}
                <CloudLayer />
-               <CameraController />
-               {/* Камера и управление OrbitControls */}
+               {cameraMono && <Monoliths/>}
+               {cameraMono && <CameraController />}
+
 
                <Float
                     floatingRange={[-0.2, 0.2]}  // Амплітуда руху по Y
@@ -532,7 +543,7 @@ export default function GoldenMonolithScene() {
                     axis="y"                     // СУВОРO ФІКСУЄМО РУХ ЛИШЕ ПО ОСІ Y
                >
                     <group position={[7, -1, 2]} rotation={[Math.PI / 4, 0, 0]} scale={0.4}>
-                         <ExtrudedArrow />
+                         {extrude && <ExtrudedArrow />}
                     </group>
                </Float>
 

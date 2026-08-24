@@ -1,6 +1,6 @@
 import React, {useRef, useMemo, useState, useEffect} from 'react';
 import * as THREE from 'three';
-import {useFrame, useThree} from '@react-three/fiber';
+import {Canvas, useFrame, useThree} from '@react-three/fiber';
 import SplineEditor from "../../CameraController.jsx";
 import {ScrollCameraPath} from "../../ViewportCanvas.jsx";
 import {PortalToSceneTwo} from "../Scene2/index.jsx";
@@ -9,6 +9,7 @@ import FlagText from "../Scene1/text.jsx";
 import ContactText from "./contact-text.jsx";
 import {MathUtils} from "three";
 import {ModelTruck} from "./Truck.jsx";
+import ShaderComponent from "../../PostProcessing.jsx";
 
 
 
@@ -154,7 +155,7 @@ function ModelLetter() {
 }
 
 
-const Scene6 = () => {
+const ContactScene = () => {
      const materialRef = useRef();
 
      // Vertex Shader
@@ -304,12 +305,12 @@ const Scene6 = () => {
           []
      );
 
-     useFrame((state, delta) => {
-          if (materialRef.current) {
-               materialRef.current.uniforms.uTime.value += delta;
-          }
-
-     });
+     // useFrame((state, delta) => {
+     //      if (materialRef.current) {
+     //           materialRef.current.uniforms.uTime.value += delta;
+     //      }
+     //
+     // });
 
      const rotX = MathUtils.degToRad(-45.8)
      const rotY = MathUtils.degToRad(-54.2)
@@ -335,10 +336,7 @@ const Scene6 = () => {
                     />
                     <SmartRectLight />
                </mesh>
-               {/*<OrbitControls />*/}
-               {/*<Model />*/}
                <ModelTruck />
-
                <ModelLetter
                />
                <PerspectiveCamera
@@ -351,4 +349,6 @@ const Scene6 = () => {
      );
 };
 
-export default Scene6;
+export default ContactScene;
+
+

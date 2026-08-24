@@ -185,9 +185,19 @@ export function InteractiveModel({ config, isActive, onClick }) {
           }
      });
 
+     const handlePointerOver = (e) => {
+          e.stopPropagation()
+          document.body.style.cursor = 'pointer'
+
+     }
+
+     const handlePointerOut = () => {
+          document.body.style.cursor = 'auto'
+     }
+
      return (
           // Базовая статическая позиция из конфига
-          <group position={config.position}>
+          <group position={config.position} >
                {/* Группа для плавного плавания по Y */}
                <group ref={floatGroupRef}>
                     {/* Группа для поворота и масштабирования */}
@@ -208,6 +218,7 @@ export function InteractiveModel({ config, isActive, onClick }) {
           </group>
      );
 }
+
 function CameraRig({ activeId, controlsRef }) {
      const dummyCamPos = useMemo(() => new THREE.Vector3(), []);
      const dummyTarget = useMemo(() => new THREE.Vector3(), []);
@@ -328,12 +339,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
           return MODELS_DATA.find((m) => m.id === activeId);
      }, [activeId]);
 
-     useEffect(() => {
-          setTimeout(() => {
-
-          }, 6000);
-     });
-
+     // ease: 'inExpo',
      function handleStartAnimation() {
           if (animated) {
                orbitChange(false);
@@ -477,7 +483,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
 export default LabScene;
 useFont.preload('/zb.json');
 
-export function PortalToSceneTwo({onTransitionComplete,excCamera}) {
+export function PortalToSceneTwo({onTransitionComplete}) {
      const [blend, setBlend] = useState(0);
      const [cameraDefault, setCameraDefault] = useState(false);
      const [orbit, setOrbit] = useState(false);
@@ -526,9 +532,8 @@ export function PortalToSceneTwo({onTransitionComplete,excCamera}) {
           <mesh ref={meshRef} position={[1.393, 7.104, -10.86]}  rotation={[0, -115 * (Math.PI / 180), 0]} onClick={goToScene} >
                <circleGeometry args={[0.26, 64]} />
                <MeshPortalMaterial blend={blend}>
-                    {/*<PerspectiveCamera  position={[0, 0, 10]} />*/}
                     <PerspectiveCamera ref={cameraRef} makeDefault={cameraDefault} position={[0, 0, 10]} />
-                     <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText} excCamera={excCamera}  />
+                     <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText}   />
                </MeshPortalMaterial>
           </mesh>
      );

@@ -8,19 +8,23 @@ import {MatrixRainScreenR3F} from "./TranisitionMatrixShader.jsx";
 import ContactText from "./scenes/Scene6/contact-text.jsx";
 import Scene6 from "./scenes/Scene6/index.jsx";
 
-const SceneManager = () => {
+const SceneManager = ({poster, town}) => {
 
 
      const [excavationActive, setExcavationActive] = useState(false);
-     const [excCamera, setExcCamera] = useState(false);
      const [expo, setExpo] = useState(true);
      const [monolith, setMonolith] = useState(false);
+     const [monolithCamera, setMonolithCamera] = useState(false);
 
      const handleTransition = () => {
           setExcavationActive(true);
           setExpo(false);
      };
 
+     const transitionToMonolith = () => {
+           setMonolithCamera(true)
+          setMonolith(true)
+     };
 
 
      return (
@@ -34,12 +38,11 @@ const SceneManager = () => {
                          onFinished={() => console.log('Заставка полностью исчезла!')}
                     />
                     {expo && <ExpoScene  />}
-                    {!excavationActive && <PortalToSceneTwo onTransitionComplete={handleTransition} excCamera={setExcCamera}  />}
-                    {excavationActive && <ExcavationPitScene  active={excCamera}  />}
-                    {monolith && <MatrixRainScreenR3F active={true} />}
-                    {monolith  && <GoldenMonolithScene />}
-                    {/*<Scene6 />*/}
-
+                    {!excavationActive && <PortalToSceneTwo onTransitionComplete={handleTransition}   />}
+                    {excavationActive &&  <ExcavationPitScene monolith={transitionToMonolith} PitScene={setExcavationActive}  />}
+                    {monolith && town  && <GoldenMonolithScene poster={poster} cameraMono={monolithCamera} />}
+                    {monolith && <MatrixRainScreenR3F fadeDuration={0.7} active={true} />}
+                    {/*<ExcavationPitScene   />*/}
                </Suspense>
           </>
      );

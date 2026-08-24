@@ -476,7 +476,7 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
 // =========================================================
 // 5. РАЗНОНАПРАВЛЕННЫЙ СКРОЛЛ (ПОДДЕРЖКА WHEEL + SCROLL)
 // =========================================================
-function PosterContent({ config, onSelect }) {
+function PosterContent({ config, onSelect , contact, town }) {
      const { viewport } = useThree();
 
      const lineOffsetRef = useRef(0);
@@ -490,11 +490,16 @@ function PosterContent({ config, onSelect }) {
                const deltaY = currentScrollY - lastScrollYRef.current;
                lastScrollYRef.current = currentScrollY;
                targetOffsetRef.current += deltaY * 1.5 * config.scrollSensitivity;
+               // contact(true)
           };
 
           // Слушаем прямое событие колесика мыши
           const handleWheel = (e) => {
                targetOffsetRef.current += e.deltaY * 0.8 * config.scrollSensitivity;
+               setTimeout(() => {
+                    contact(true)
+                    town(false)
+               },1200)
           };
 
           // Слушаем тач-события для мобильных устройств
@@ -725,7 +730,7 @@ function ImagePopup({ selectedData, onClose }) {
 // =========================================================
 // 7. ГЛАВНЫЙ ЭКСПОРТИРУЕМЫЙ КОМПОНЕНТ
 // =========================================================
-export default function InteractivePoster({ customConfig = {} }) {
+export default function InteractivePoster({ town,  contact,  customConfig = {} }) {
      const [selectedData, setSelectedData] = useState(null);
 
      const activeConfig = useMemo(() => {
@@ -745,6 +750,8 @@ export default function InteractivePoster({ customConfig = {} }) {
                          <PosterContent
                               config={activeConfig}
                               onSelect={(item, color) => setSelectedData({ item, color })}
+                              contact={contact}
+                              town={town}
                          />
                     </Canvas>
 

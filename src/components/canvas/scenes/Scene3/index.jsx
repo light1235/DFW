@@ -1,11 +1,11 @@
 import React, {Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {
      Center,
-     Clone,
+     Clone, Html,
      OrbitControls,
      OrthographicCamera,
      PerspectiveCamera, ScrollControls,
-     Stars, Text3D,
+     Stars, Text3D, useCursor,
      useGLTF,
      useTexture
 } from "@react-three/drei";
@@ -13,9 +13,14 @@ import * as THREE from "three";
 import {useFrame, useThree} from "@react-three/fiber";
 import {MathUtils} from "three";
 import { gsap } from 'gsap';
+import { animate } from 'animejs';
+import 'animejs/adapters/three';
 
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import {ModelFort} from "./model.jsx";
+
+import FlagText from "../Scene1/text.jsx";
+import TowerText from "./towerText.jsx";
 
 // Регистрируем плагин ScrollTrigger
 gsap.registerPlugin(ScrollTrigger);
@@ -566,84 +571,204 @@ export function AnimatedText({ text = "Scroll to explore    ", visible = false,s
      );
 }
 
+
+export function OpenDoor({
+                              initialOpen = false,      // Статус приоткрытости по умолчанию
+                              openAngle = 0.45,        // Угол открытия в радианах (~25-30 градусов)
+                              position = [0, 0, 0],
+                              scale = 1,
+     rotation,enter
+                         }) {
+     const [isOpen, setIsOpen] = useState(initialOpen);
+     const [hovered, setHovered] = useState(false);
+     const hingeRef = useRef();
+
+     // Меняем курсор при наведении на дверь
+     useCursor(hovered);
+     const { camera } = useThree();
+
+     // Параметры геометрии
+     const doorWidth = 2;
+     const doorHeight = 4;
+     const doorThickness = 0.1;
+     const frameThickness = 0.15;
+     const frameDepth = 0.25;
+
+     // Плавный поворот двери на каждом кадре
+     useFrame((_, delta) => {
+          if (hingeRef.current) {
+               const targetAngle = isOpen ? openAngle : 0;
+               hingeRef.current.rotation.y = THREE.MathUtils.lerp(
+                    hingeRef.current.rotation.y,
+                    targetAngle,
+                    delta * 6 // Скорость анимации
+               );
+          }
+     });
+
+     return (
+          <group position={position} rotation={rotation} scale={scale}>
+
+               {/* 1. ТЕМНО-СИНИЙ ЗАДНИЙ ФОН (Внутри проема двери) */}
+               <mesh position={[0, 0, -frameDepth / 2 + 0.01]}>
+                    <planeGeometry args={[doorWidth, doorHeight]} />
+                    {/* MeshBasicMaterial не зависит от света и дает чистый глубокий цвет */}
+                    <meshBasicMaterial color="#020b26" side={THREE.DoubleSide} />
+               </mesh>
+
+               {/* Мягкий синий свет из глубины (по желанию для атмосферности) */}
+               <pointLight position={[0, 0, -0.5]} color="#1d4ed8" intensity={3} distance={4} />
+
+               {/* 2. ДВЕРНАЯ КОРОБКА (РАМА) */}
+               <group>
+                    {/* Левая стойка */}
+                    <mesh position={[-doorWidth / 2 - frameThickness / 2, 0, 0]}>
+                         <boxGeometry args={[frameThickness, doorHeight + frameThickness, frameDepth]} />
+                         <meshStandardMaterial color="#1a1412" roughness={0.8} />
+                    </mesh>
+
+                    {/* Правая стойка */}
+                    <mesh position={[doorWidth / 2 + frameThickness / 2, 0, 0]}>
+                         <boxGeometry args={[frameThickness, doorHeight + frameThickness, frameDepth]} />
+                         <meshStandardMaterial color="#1a1412" roughness={0.8} />
+                    </mesh>
+
+                    {/* Верхняя планка */}
+                    <mesh position={[0, doorHeight / 2 + frameThickness / 2, 0]}>
+                         <boxGeometry args={[doorWidth + frameThickness * 2, frameThickness, frameDepth]} />
+                         <meshStandardMaterial color="#1a1412" roughness={0.8} />
+                    </mesh>
+               </group>
+
+               {/* 3. ГРУППА-ПЕТЛЯ (Hinge) — Смещена к левому краю двери [-doorWidth / 2] */}
+               <group
+                    ref={hingeRef}
+                    position={[-doorWidth / 2, 0, frameDepth / 2 - doorThickness / 2]}
+               >
+                    {/* ДВЕРНОЕ ПОЛОТНО (Смещено вправо на half-width относительно петли) */}
+                    <mesh
+                         position={[doorWidth / 2, 0, 0]}
+                         onClick={(e) => {
+                              e.stopPropagation();
+                              setIsOpen(true);
+
+                              animate(
+                                   camera.position,
+                                   {
+                                        x:[217,224],
+                                        z:[-16.70,-18],
+                                        duration: 1500,
+                                        delay:500,
+                                        ease: 'inOutCubic',
+                                        onBegin: () => {
+                                             setTimeout(() => {
+                                                  enter()
+                                             },1500)
+                                        },
+                                   }
+                              );
+                         }}
+                         /*Position: [217.74, 198.71, -16.70]*/
+                         onPointerOver={(e) => {
+                              e.stopPropagation();
+                              setHovered(true);
+                         }}
+                         onPointerOut={() => setHovered(false)}
+                    >
+                         <boxGeometry args={[doorWidth, doorHeight, doorThickness]} />
+                         <meshStandardMaterial
+                              color={hovered ? '#4a3324' : '#362317'}
+                              roughness={0.6}
+                         />
+
+                         {/* Дверная ручка (планка + ручка) */}
+                         <mesh position={[doorWidth / 2 - 0.2, -0.1, doorThickness / 2 + 0.02]}>
+                              <boxGeometry args={[0.06, 0.3, 0.02]} />
+                              <meshStandardMaterial color="#c5a059" metalness={0.8} roughness={0.2} />
+                         </mesh>
+                         <mesh position={[doorWidth / 2 - 0.2, -0.05, doorThickness / 2 + 0.07]}>
+                              <boxGeometry args={[0.04, 0.04, 0.1]} />
+                              <meshStandardMaterial color="#c5a059" metalness={0.8} roughness={0.2} />
+                         </mesh>
+                    </mesh>
+               </group>
+
+          </group>
+     );
+}
+
 const curve = new THREE.CatmullRomCurve3([
      new THREE.Vector3( 178.610, 199.770, 29.080 ),
      new THREE.Vector3( 195.557, 200.564, 1.814 ),
      new THREE.Vector3( 217.737, 198.714, -16.704 ) // Конец на 198.714
 ], false, 'catmullrom', 0.50);
 
- function HelmetController({ scroll }) {
+function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
      const modelRef = useRef();
      const isAnimated = useRef(false);
      const { camera } = useThree();
 
      const animData = useRef({
           x: 183.5,
-          y: 210.4,       // Старт падения
+          y: 210.4,
           z: 23,
           rotationY: -.6,
-          progress: 0
+          progress: 0,
+          isFinished: false // Флаг завершения полета
      });
 
      useEffect(() => {
           const removeListeners = () => {
                window.removeEventListener('wheel', handleStartAnimation);
-               // window.removeEventListener('click', handleStartAnimation);
           };
 
           const handleStartAnimation = () => {
                if (isAnimated.current) return;
                isAnimated.current = true;
-
                removeListeners();
                animData.current.progress = 0;
+               animData.current.isFinished = false;
+
                const tl = gsap.timeline();
-               // ЭТАП 1: Падение шлема с 210.4 до 198.4
                tl.to(animData.current, {
                     y: 198.4,
                     duration: 1.2,
                     ease: "power2.out",
-                    onComplete: ()=> {
+                    onComplete: () => {
                          scroll(false);
                     }
                })
-                    // ЭТАП 2: Разворот шлема
                     .to(animData.current, {
                          rotationY: -.6 + Math.PI,
                          duration: 1.1,
                          ease: "power2.inOut"
                     })
-                    // ЭТАП 3: Подъем шлема до 202
                     .to(animData.current, {
                          y: 202,
                          duration: 1.0,
                          ease: "back.out(1.2)"
                     })
-                    // ЭТАП 4: Синхронное движение по кривой сплайна
                     .to(animData.current, {
                          progress: 1,
                          duration: 3.5,
                          ease: "power1.inOut",
                          onUpdate: () => {
                               const p = animData.current.progress;
-
-                              // Берем точку на кривой для текущего кадра
                               const position = curve.getPointAt(p);
-
-                              // Жестко синхронизируем координаты шлема с кривой!
-                              // Больше никакого разрыва по высоте (y: 202 остался на 3 этапе)
                               animData.current.x = position.x;
                               animData.current.y = position.y;
                               animData.current.z = position.z;
                          },
                          onComplete: () => {
                               scroll(true);
+                              activeText(true);
+                              // Освобождаем камеру для сторонних аниматоров
+                              animData.current.isFinished = true;
                          }
                     });
           };
 
           window.addEventListener('wheel', handleStartAnimation, { passive: true });
-          // window.addEventListener('click', handleStartAnimation);
 
           return () => {
                removeListeners();
@@ -651,70 +776,51 @@ const curve = new THREE.CatmullRomCurve3([
           };
      }, [scroll]);
 
+     useFrame(() => {
+          if (!modelRef.current) return;
 
-      useFrame(() => {
-           if (!modelRef.current) return;
+          if (!isAnimated.current || animData.current.progress === 0) {
+               modelRef.current.position.x = 183.5;
+               modelRef.current.position.z = 23;
+               modelRef.current.position.y = animData.current.y;
+               modelRef.current.rotation.y = animData.current.rotationY;
+          }
 
-           // 1. Если анимация ещё не началась (этапы 1, 2, 3), шлем на месте
-           if (!isAnimated.current || animData.current.progress === 0) {
-                modelRef.current.position.x = 183.5;
-                modelRef.current.position.z = 23;
-                modelRef.current.position.y = animData.current.y;
-                modelRef.current.rotation.y = animData.current.rotationY;
-           }
+          // Выполняем управление камерой ТОЛЬКО пока полет не завершен (!isFinished)
+          if (isAnimated.current && animData.current.progress > 0 && !animData.current.isFinished) {
+               const p = animData.current.progress;
 
-           // 2. ЭТАП 4: Движение каски и камеры вдоль кривой сплайна
-           if (isAnimated.current && animData.current.progress > 0) {
-                const p = animData.current.progress;
+               const cameraPos = curve.getPointAt(p);
+               camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
 
-                // Камера летит строго по точкам сплайна
-                const cameraPos = curve.getPointAt(p);
-                camera.position.set(cameraPos.x, cameraPos.y, cameraPos.z);
+               animData.current.x = cameraPos.x;
+               animData.current.y = cameraPos.y + 1.43;
+               animData.current.z = cameraPos.z;
 
-                // Синхронизируем координаты шлема: он летит по той же кривой,
-                // но мы вручную поднимаем его на зафиксированную высоту 202 (разница 1.43 относительно старта кривой)
-                animData.current.x = cameraPos.x;
-                animData.current.y = cameraPos.y + 1.43; // Шлем выше камеры на 1.43 единицы
-                animData.current.z = cameraPos.z;
+               modelRef.current.position.x = animData.current.x;
+               modelRef.current.position.y = animData.current.y;
+               modelRef.current.position.z = animData.current.z;
+               modelRef.current.rotation.y = animData.current.rotationY;
 
-                // Применяем координаты к шлему
-                modelRef.current.position.x = animData.current.x;
-                modelRef.current.position.y = animData.current.y;
-                modelRef.current.position.z = animData.current.z;
-                modelRef.current.rotation.y = animData.current.rotationY;
+               let lookAtTarget = new THREE.Vector3();
 
-                let lookAtTarget = new THREE.Vector3();
+               if (p > 0.85) {
+                    const alpha = (p - 0.85) / 0.15;
+                    const lineLook = curve.getPointAt(Math.min(p + 0.02, 1));
+                    const rightLook = new THREE.Vector3(
+                         camera.position.x + 10,
+                         camera.position.y,
+                         camera.position.z
+                    );
+                    lookAtTarget.lerpVectors(lineLook, rightLook, alpha);
+               } else {
+                    lookAtTarget = curve.getPointAt(Math.min(p + 0.02, 1));
+               }
 
-                // Проверяем последние 15% пути для поворота
-                if (p > 0.85) {
-                     const alpha = (p - 0.85) / 0.15;
-
-                     // Стандартный взгляд вперед по линии (на пару метров впереди камеры)
-                     const lineLook = curve.getPointAt(Math.min(p + 0.02, 1));
-
-                     // Поворот взгляда строго направо в финале (смещаем целевую точку вправо по оси X)
-                     const rightLook = new THREE.Vector3(
-                          camera.position.x + 10,
-                          camera.position.y,
-                          camera.position.z
-                     );
-
-                     // Плавно смешиваем взгляд от линии к направлению направо
-                     lookAtTarget.lerpVectors(lineLook, rightLook, alpha);
-                } else {
-                     // Обычный полет: камера смотрит на пару метров вперед по направлению линии
-                     lookAtTarget = curve.getPointAt(Math.min(p + 0.02, 1));
-                }
-
-                // Выравниваем высоту точки взгляда под камеру, чтобы не было наклона по вертикали
-                lookAtTarget.y = camera.position.y;
-
-                // Поворачиваем камеру к вычисленной цели
-                camera.lookAt(lookAtTarget);
-
-
-           }
-      });
+               lookAtTarget.y = camera.position.y;
+               camera.lookAt(lookAtTarget);
+          }
+     });
 
      return (
           <group ref={modelRef}>
@@ -723,26 +829,44 @@ const curve = new THREE.CatmullRomCurve3([
      );
 }
 
-
 // Главный экспорт компонента шлема
-export function AnimatedHelmet({scroll}) {
+export function AnimatedHelmet({scroll,destroy,monolith,PitScene,activeText}) {
      return (
 
           <Suspense fallback={null}>
-               <HelmetController scroll={scroll} />
+               <HelmetController activeText={activeText} PitScene={PitScene} scroll={scroll} destroy={destroy} monolith={monolith} />
           </Suspense>
      );
 }
 
-const ExcavationPitScene = ({active}) => {
+const ExcavationPitScene = ({monolith, PitScene}) => {
 
      const [scrollText, setScrollText] = useState(false);
      const [helmAnimation, setHelmAnimation] = useState(false);
      const [showPortal, setShowPortal] = useState(false);
+     const [destroy, setDestroy] = useState(false);
      const rotX = MathUtils.degToRad(0.5)
      const rotY = MathUtils.degToRad(-41.6)
      const rotZ = MathUtils.degToRad(0.4)
 
+
+     const enterToPortal = () => {
+          monolith()
+          PitScene(false)
+     };
+     // const [isHovered, setIsHovered] = useState(false);
+     const [activePortalText, setActivePortalText] = useState(false);
+
+     // const handlePointerOver = (event) => {
+     //      event.stopPropagation(); // Зупиняє проходження променя (raycast) далі
+     //      setIsHovered(true);
+     //      document.body.style.cursor = 'pointer';
+     // };
+     //
+     // const handlePointerOut = () => {
+     //      setIsHovered(false);
+     //      document.body.style.cursor = 'auto';
+     // };
 
 
      return (
@@ -761,19 +885,28 @@ const ExcavationPitScene = ({active}) => {
                />
                <color attach="background" args={['#1a1a2e']} />
                {/*<OrbitControls target={[200, 200, 5]} />*/}
-               {showPortal &&   <mesh
-                    name='portal'
-                    position={[233.61, 199.77, -20.08]}
-                    rotation={[0,3.4+ Math.PI / 2, 0]}
-                    scale={[4, 6, 4]} // Увеличивает высоту, превращая круг в овал
-               >
-                    <circleGeometry args={[1, 32]} />
-                    <meshStandardMaterial side={THREE.DoubleSide} color="aquamarine" />
-               </mesh> }
+               {/*{showPortal &&   <mesh*/}
+               {/*     onClick={enterToPortal}*/}
+               {/*     onPointerOver={handlePointerOver} onPointerOut={handlePointerOut}*/}
+               {/*     name='portal'*/}
+               {/*     position={[233.61, 199.77, -20.08]}*/}
+               {/*     rotation={[0,3.4+ Math.PI / 2, 0]}*/}
+               {/*     scale={[4, 6, 4]} // Увеличивает высоту, превращая круг в овал*/}
+               {/*>*/}
+               {/*     <circleGeometry args={[1, 32]} />*/}
+               {/*     <meshStandardMaterial side={THREE.DoubleSide}*/}
+               {/*                           color="#aaaaaa"*/}
+               {/*                           // emissive="#00ffff"*/}
+               {/*                           // emissiveIntensity={0.4}*/}
+               {/*                           roughness={1.0}*/}
+               {/*                           metalness={0.1}*/}
+               {/*                           // opacity={0.1}*/}
 
-               {/*<CameraLogger />*/}
+               {/*     />*/}
+               {/*</mesh> }*/}
+
                <ModelBox />
-               <ModelFort scroll={setScrollText} helm={setHelmAnimation} portal={setShowPortal} />
+               <ModelFort scroll={setScrollText} helm={setHelmAnimation} destroy={destroy} portal={setShowPortal} />
 
                <ModelIndustrial />
                <ModelStairk />
@@ -781,10 +914,19 @@ const ExcavationPitScene = ({active}) => {
                <ModelDamaged />
 
                <AnimatedText visible={scrollText}  size={0.5} />
-               {helmAnimation &&  <AnimatedHelmet scroll={setScrollText} />}
+               {helmAnimation &&  <AnimatedHelmet activeText={setActivePortalText} PitScene={PitScene} monolith={monolith} scroll={setScrollText} destroy={setDestroy} />}
 
+               <group visible={activePortalText}  position={[228.61, 198.77, -22.08]} rotation={[0, 3.4 + Math.PI / 2, 0]}>
+                     <TowerText active={true} />
+               </group>
+               <OpenDoor enter={enterToPortal}  position={[238.61, 194.77, -20.08]}
+                          rotation={[0,3.4+ Math.PI / 2, 0]} openAngle={0.6} scale={2.6} />
                <LedLine position={[241.2, 212, 15]} rotation={[0, 2.6, 0]} />
                <LedLine position={[173, 212, -38]} rotation={[0, 2.6, 0]} />
+               {/*<CameraLogger />*/}
+               {/*631index.jsx:454 [Camera]*/}
+               {/*Position: [217.74, 198.71, -16.70]*/}
+               {/*Rotation (deg): [0.0, -90.0, 0.0]*/}
 
           </>
      );

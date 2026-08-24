@@ -14,7 +14,7 @@ export default function PortalText() {
                duration: 1500,
                ease: 'outQuad',
                autoplay: true,
-               delay:2500,
+               delay:2100,
           });
 
      })
