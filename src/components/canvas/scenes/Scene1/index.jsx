@@ -2,7 +2,6 @@ import React, {useRef, useMemo, useState, useEffect} from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import FlagText from "./text.jsx";
-import LevelModel from "./Leveler.jsx";
 import Formwork from "./Formwork.jsx";
 import {Model} from "./levels.jsx";
 import RainbowLaser, {ConeLaser} from "./Laser.jsx";
