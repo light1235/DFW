@@ -663,7 +663,7 @@ export function OpenDoor({
                                         onBegin: () => {
                                              setTimeout(() => {
                                                   enter()
-                                             },1500)
+                                             },1150)
                                         },
                                    }
                               );

@@ -355,7 +355,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                               camera(false);
                               orbitChange(false);
                               transition();
-                         }, 2900);
+                         }, 2700);
                     },
                });
           }
