@@ -43,7 +43,9 @@ export default function App() {
          <HeaderSection />
          {/*style={{ display: town ? 'block' : 'none' }}*/}
       <Canvas  style={{ display: town ? 'block' : 'none' }} className="fixed-canvas z-30"
-              camera={{ position: [0, 10, 45], fov: 30 }}
+               frameloop={town ? 'always' : 'never'}   // ← скрыт = не рисуется
+               dpr={[1, 1.5]}
+               camera={{ position: [0, 10, 45], fov: 30 }}
               shadows
               gl={{ antialias: true, toneMappingExposure: 1.15 }}
       >
