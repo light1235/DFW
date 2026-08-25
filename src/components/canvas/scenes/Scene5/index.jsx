@@ -631,14 +631,29 @@ function PosterContent({ config, onSelect, contact, town }) {
 
           // Слушаем тач-события для мобильных устройств
           let touchStartY = 0;
+          let totalSwipeDelta = 0;
+          let contactTriggered = false;
           const handleTouchStart = (e) => {
                touchStartY = e.touches[0].clientY;
+               totalSwipeDelta = 0;
+               contactTriggered = false;
           };
           const handleTouchMove = (e) => {
                const currentY = e.touches[0].clientY;
                const deltaY = touchStartY - currentY;
                touchStartY = currentY;
                targetOffsetRef.current += deltaY * 1.5 * config.scrollSensitivity;
+
+               // Накапливаем суммарный свайп вниз.
+               // Переход на 6-ю сцену — один раз, когда накоплено ≥80px
+               totalSwipeDelta += deltaY;
+               if (!contactTriggered && totalSwipeDelta > 80) {
+                    contactTriggered = true;
+                    setTimeout(() => {
+                         contact(true);
+                         town(false);
+                    }, 1200);
+               }
           };
 
           window.addEventListener('scroll', handleScroll, { passive: true });

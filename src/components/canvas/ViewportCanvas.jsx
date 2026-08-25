@@ -4,10 +4,10 @@ import * as THREE from 'three';
 
 // Вы можете свободно менять любые точки — финал теперь зафиксирован математически ниже
 const SPLINE_POINTS = [
-     [ 0, 10, 45 ],
-     [ 4.573, 4.081, 19.287 ],
-     [ -6.804, 7.593, 4.072 ],
-     [ -4.132, 11.091, -9.748 ],
+     [0, 10, 45],
+     [4.573, 4.081, 19.287],
+     [-6.804, 7.593, 4.072],
+     [-4.132, 11.091, -9.748],
 ];
 
 // ЖЕСТКО ФИКСИРОВАННЫЕ ДАННЫЕ ПОРТАЛА И КАМЕРЫ НА ФИНИШЕ
@@ -77,22 +77,28 @@ export function ScrollCameraPath({ onArrive = {}, portal }) {
           savedStateAtSwitch: false // Флаг фиксации координат в точке 0.85
      });
 
+     // Порог свайпа в пикселях. Тач-жест непрерывный, в отличие от дискретного
+     // "клика" колеса, поэтому нужен минимальный сдвиг, чтобы случайный тап
+     // не запускал полёт камеры.
+     const SWIPE_THRESHOLD = 40;
+
      useEffect(() => {
-          const onWheel = (e) => {
-               e.preventDefault();
+          // Ядро логики, общее для колеса и свайпа.
+          // deltaY > 0 — движение "вперёд" по сплайну (как прокрутка вниз).
+          const advance = (deltaY) => {
                const s = state.current;
                if (s.animating) return;
-               if (e.deltaY < 0) return;
+               if (deltaY < 0) return;
                if (!s.hasScrolledYet) {
                     s.initialQuaternion.copy(camera.quaternion);
                     s.hasScrolledYet = true;
                     setTimeout(() => {
-                       portal(true)
+                         portal(true)
                     }, 2200)
                }
 
                if (WAYPOINTS.length >= 2) {
-                    const dir = e.deltaY > 0 ? 1 : -1;
+                    const dir = deltaY > 0 ? 1 : -1;
                     const next = s.waypointCursor + dir;
                     if (next < 0 || next >= WAYPOINTS.length) return;
                     s.fromT = s.scrollT; s.toT = WAYPOINTS[next]; s.elapsed = 0; s.animating = true;
@@ -101,7 +107,7 @@ export function ScrollCameraPath({ onArrive = {}, portal }) {
                     return;
                }
 
-               const target = e.deltaY > 0 ? 1 : 0;
+               const target = deltaY > 0 ? 1 : 0;
                if (Math.abs(s.scrollT - target) < 0.001) return;
                s.fromT = s.scrollT; s.toT = target; s.elapsed = 0; s.animating = true;
                s.currentTargetPoint = target === 1 ? TOTAL_POINTS : 1;
@@ -109,8 +115,68 @@ export function ScrollCameraPath({ onArrive = {}, portal }) {
                // Сбрасываем флаг фиксации при новом скролле назад/вперед
                if (s.toT === 0) s.savedStateAtSwitch = false;
           };
-          gl.domElement.addEventListener("wheel", onWheel, { passive: false });
-          return () => gl.domElement.removeEventListener("wheel", onWheel);
+
+          const onWheel = (e) => {
+               e.preventDefault();
+               advance(e.deltaY);
+          };
+
+          // --- Тач-ввод ---------------------------------------------------------
+          // БАГ ДО ЭТОГО: слушался только "wheel". На телефонах и планшетах это
+          // событие не генерируется вообще, поэтому первая сцена намертво
+          // застывала на кадре 0 — камера не двигалась, портал не появлялся,
+          // и попасть в остальные сцены было физически невозможно.
+          let touchStartY = null;
+          let swipeFired = false;
+
+          const onTouchStart = (e) => {
+               if (e.touches.length !== 1) {
+                    // Мультитач — это жест зума/пана, а не навигация.
+                    touchStartY = null;
+                    return;
+               }
+               touchStartY = e.touches[0].clientY;
+               swipeFired = false;
+          };
+
+          const onTouchMove = (e) => {
+               if (touchStartY === null) return;
+
+               // Блокируем нативный скролл/pull-to-refresh, пока пользователь
+               // ведёт палец по канвасу. Требует passive: false.
+               if (e.cancelable) e.preventDefault();
+
+               // Один свайп = одно срабатывание, иначе touchmove (десятки событий
+               // в секунду) забил бы анимацию повторными вызовами.
+               if (swipeFired) return;
+
+               // Палец вверх => контент уезжает вверх => это "прокрутка вниз".
+               const deltaY = touchStartY - e.touches[0].clientY;
+               if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
+
+               swipeFired = true;
+               advance(deltaY);
+          };
+
+          const onTouchEnd = () => {
+               touchStartY = null;
+               swipeFired = false;
+          };
+
+          const el = gl.domElement;
+          el.addEventListener("wheel", onWheel, { passive: false });
+          el.addEventListener("touchstart", onTouchStart, { passive: true });
+          el.addEventListener("touchmove", onTouchMove, { passive: false });
+          el.addEventListener("touchend", onTouchEnd, { passive: true });
+          el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+          return () => {
+               el.removeEventListener("wheel", onWheel);
+               el.removeEventListener("touchstart", onTouchStart);
+               el.removeEventListener("touchmove", onTouchMove);
+               el.removeEventListener("touchend", onTouchEnd);
+               el.removeEventListener("touchcancel", onTouchEnd);
+          };
      }, [gl, camera]);
 
      useFrame((_, dt) => {

@@ -43,6 +43,15 @@
 .read-the-docs7 {
   color: lightyellow;
 }
+.fixed-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  touch-action: pan-y !important;
+}
+
 html, body {
   overflow-x: hidden;
 }

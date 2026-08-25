@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { animate } from 'animejs';
 import 'animejs/adapters/three';
 import { AnimatedText } from "../Scene3/index.jsx";
+import { useIsMobile, useIsTouch } from "../../../../hooks/useIsMobile.js";
 // OPT: убраны неиспользуемые импорты Suspense и useThree.
 
 
@@ -144,6 +145,50 @@ const MODELS_DATA = [
      }
 ];
 
+// -----------------------------------------------------------------------------
+// МОБИЛЬНАЯ РАСКЛАДКА
+//
+// Десктопная расстановка развёрнута ПО ГОРИЗОНТАЛИ: x от -2.8 до 3.
+// Это работает только при широком экране, потому что fov в three.js —
+// вертикальный, а горизонтальный обзор равен fov * aspect.
+//
+// Считаем, что реально видно на телефоне (390x844, aspect ≈ 0.46).
+// Камера портала стоит на z = 10, модели на z ≈ 4.5..5.5, то есть до них
+// примерно 5 единиц. При fov 50:
+//     полувысота = tan(25°) * 5   ≈ 2.33
+//     полуширина = 2.33 * 0.46    ≈ 1.07
+// То есть по горизонтали в кадр влезает полоса шириной ~2.1 единицы,
+// а модели расставлены на 5.8. В портрете за кадром оказываются ВСЕ ПЯТЬ.
+//
+// Расширить fov до нужных ~120° нельзя — это карикатурная перспектива.
+// Зато в портрете есть то, чего нет на десктопе: запас по вертикали
+// (полувысота 2.33 против полуширины 1.07, то есть более чем вдвое).
+// Поэтому раскладка переворачивается: вместо горизонтального ряда —
+// вертикальный зигзаг в две узкие колонки.
+//
+// Проверка на итоговых мобильных параметрах (fov 64, камера z = 13,
+// модели z = 5, то есть расстояние 8):
+//     полувысота = tan(32°) * 8        ≈ 5.00
+//     полуширина = 5.00 * 0.46         ≈ 2.31
+// Крайние модели: |x| 0.9 + радиус ~0.8 = 1.7 < 2.31   ✓
+//                 |y| 3.2 + радиус ~0.8 = 4.0 < 5.00   ✓
+// Ближайшие соседи разнесены на sqrt(1.8² + 1.6²) ≈ 2.41 при нужных
+// 1.6 (два радиуса) — не перекрываются.
+// -----------------------------------------------------------------------------
+const MOBILE_LAYOUT = {
+     0: [-0.9, -3.2, 5.0],
+     1: [0.9, -1.6, 5.0],
+     2: [-0.9, 0.0, 5.0],
+     3: [0.9, 1.6, 5.0],
+     4: [-0.9, 3.2, 5.0],
+};
+
+// Аннотации и модели те же — меняются только координаты.
+const MODELS_DATA_MOBILE = MODELS_DATA.map((m) => ({
+     ...m,
+     position: MOBILE_LAYOUT[m.id] ?? m.position,
+}));
+
 // ПРИМЕЧАНИЕ: сознательно НЕ делаем useGLTF.preload на уровне модуля.
 // Этот файл импортируется на старте приложения, а видна первой Scene1 —
 // предзагрузка 5 GLB отняла бы трафик у ассетов первого экрана.
@@ -251,28 +296,41 @@ export const InteractiveModel = React.memo(function InteractiveModel({ config, i
 // замыкания каждый кадр. Математика та же: target = позиция модели,
 // позиция камеры = та же точка со смещением z + 3.
 // -----------------------------------------------------------------------------
-const MODEL_CAMERA_TARGETS = new Map(
-     MODELS_DATA.map((m) => [
-          m.id,
-          {
-               target: new THREE.Vector3(m.position[0], m.position[1], m.position[2]),
-               camPos: new THREE.Vector3(m.position[0], m.position[1], m.position[2] + 3),
-          },
-     ])
-);
+const buildCameraTargets = (models, zOffset) =>
+     new Map(
+          models.map((m) => [
+               m.id,
+               {
+                    target: new THREE.Vector3(m.position[0], m.position[1], m.position[2]),
+                    camPos: new THREE.Vector3(m.position[0], m.position[1], m.position[2] + zOffset),
+               },
+          ])
+     );
+
+const MODEL_CAMERA_TARGETS = buildCameraTargets(MODELS_DATA, 3);
+
+// На мобильном камера подходит к модели не на 3, а на 4.5 единицы.
+// Причина та же — узкая полуширина кадра. При fov 64 и расстоянии 3
+// полуширина = tan(32°) * 3 * 0.46 ≈ 0.87, а радиус модели ~0.8:
+// объект впритык упирался бы в боковые края. На 4.5 полуширина ≈ 1.30,
+// и модель занимает ~60% ширины — остаётся воздух и место для панели.
+const MODEL_CAMERA_TARGETS_MOBILE = buildCameraTargets(MODELS_DATA_MOBILE, 4.5);
 
 const DEFAULT_CAM_POS = new THREE.Vector3(0, 0, 10);
+// Обзорная точка отодвинута: вертикальная колонка выше, чем был ряд.
+const DEFAULT_CAM_POS_MOBILE = new THREE.Vector3(0, 0, 13);
 const DEFAULT_TARGET = new THREE.Vector3(0, 0, 0);
 
-function CameraRig({ activeId, controlsRef }) {
+function CameraRig({ activeId, controlsRef, isMobile }) {
      useFrame((state, delta) => {
           if (!controlsRef.current) return;
 
           // OPT: вместо двух dummy-векторов и find() — прямой доступ к
           // заранее посчитанным целям.
-          const entry = activeId !== null ? MODEL_CAMERA_TARGETS.get(activeId) : null;
+          const targets = isMobile ? MODEL_CAMERA_TARGETS_MOBILE : MODEL_CAMERA_TARGETS;
+          const entry = activeId !== null ? targets.get(activeId) : null;
           const targetVec = entry ? entry.target : DEFAULT_TARGET;
-          const camVec = entry ? entry.camPos : DEFAULT_CAM_POS;
+          const camVec = entry ? entry.camPos : (isMobile ? DEFAULT_CAM_POS_MOBILE : DEFAULT_CAM_POS);
 
           state.camera.position.lerp(camVec, delta * 4);
           controlsRef.current.target.lerp(targetVec, delta * 4);
@@ -405,6 +463,47 @@ const PANEL_TITLE_STYLE = { fontWeight: 'bold', marginBottom: '5px', color: '#00
 const PANEL_P_STYLE = { margin: '0 0 5px 0' };
 const PANEL_P_LAST_STYLE = { margin: '0' };
 
+// -----------------------------------------------------------------------------
+// Мобильные стили панели.
+//
+// Html с distanceFactor масштабирует DOM так (drei, objectScale):
+//     scale = distanceFactor / (2 * tan(fov/2) * dist)
+//
+// На мобильном фокусе fov = 64, камера отстоит от модели на 4.5, панель
+// смещена на 2.2 вниз, то есть dist = sqrt(4.5² + 2.2²) ≈ 5.01.
+// Делитель = 2 * tan(32°) * 5.01 ≈ 6.26.
+//
+// Полная ширина панели с мобильными отступами = 240 + 12 + 36 = 288px.
+//     distanceFactor 10 → scale 1.60 → 460px. Шире любого телефона.
+//     distanceFactor 8  → scale 1.28 → 369px. Всё ещё не влезает в 360px.
+//     distanceFactor 7  → scale 1.12 → 322px. Влезает и в 360px.
+// Поэтому 7. Кегль при этом 9.5 * 1.12 ≈ 10.6px — на грани, но читаемо;
+// поднимать больше нельзя, панель тут же перестанет влезать по ширине.
+// -----------------------------------------------------------------------------
+const PANEL_DISTANCE_FACTOR_MOBILE = 7;
+
+const PANEL_STYLE_MOBILE = {
+     ...PANEL_STYLE,
+     fontSize: '9.5px',
+     borderRadius: '10px',
+     // Слева освобождено место под увеличенную кнопку «назад».
+     padding: '12px 12px 12px 36px',
+};
+
+// Иконка 12x12 без padding — это зона нажатия ~20px после масштабирования,
+// вдвое меньше минимальных 44px для пальца. Здесь она доводится до нормы.
+const BACK_BUTTON_STYLE_MOBILE = {
+     ...BACK_BUTTON_STYLE,
+     left: '4px',
+     top: '4px',
+     padding: '6px',
+     minWidth: '28px',
+     minHeight: '28px',
+     touchAction: 'manipulation',
+};
+
+const PANEL_TITLE_STYLE_MOBILE = { ...PANEL_TITLE_STYLE, fontSize: '10.4px', marginBottom: '6px' };
+
 // OPT: трансформы и args декоративных мешей подняты из JSX.
 const TORUS_SCALE = [0.15, 0.15, 0.03];
 const TORUS_ROTATION = [Math.PI / 2, 0, 0];
@@ -418,11 +517,30 @@ const DIR_LIGHT_POSITION = [5, 5, 5];
 const TEXT_POSITION = [-0.3, 5.9, -6.1];
 const TEXT_ROTATION = [0, 0, 0];
 
+// Подсказка выхода. Текст лежит на z = -6.1, камера на z = 13, то есть до
+// него ~19 единиц. Полуширина кадра там = tan(32°) * 19.1 * 0.46 ≈ 5.5.
+// «Scroll to next » при TextGap 0.48 — это ~7.2 единицы, и в портрете
+// фраза не влезает по ширине. Плюс сама формулировка неверна: колеса на
+// телефоне нет. Короткое «Swipe up» — 8 знаков, ~3.8 единицы, влезает
+// с запасом при любой трактовке выравнивания.
+const HINT_TEXT_DESKTOP = 'Scroll to next ';
+const HINT_TEXT_MOBILE = 'Swipe up';
+
+// Порог свайпа в пикселях. 70px — заметно больше случайного дрожания
+// пальца при тапе (обычно < 10px), но меньше половины экрана, чтобы
+// жест не требовал протяжки через весь телефон.
+const SWIPE_THRESHOLD = 70;
+
 
 const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blend, camera }) => {
      const [activeId, setActiveId] = useState(2);
      const [cameraFocusId, setCameraFocusId] = useState(null);
      const controlsRef = useRef();
+
+     const isMobile = useIsMobile();
+     const isTouch = useIsTouch();
+
+     const models = isMobile ? MODELS_DATA_MOBILE : MODELS_DATA;
 
      // OPT: useCallback — иначе новая функция на каждый рендер сбрасывала
      // React.memo у всех InteractiveModel.
@@ -438,8 +556,8 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
      }, []);
 
      const activeModelData = useMemo(() => {
-          return MODELS_DATA.find((m) => m.id === activeId);
-     }, [activeId]);
+          return models.find((m) => m.id === activeId);
+     }, [models, activeId]);
 
      // OPT: позиции, зависящие от активной модели, мемоизированы —
      // раньше это были новые массивы на каждый рендер.
@@ -452,14 +570,33 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
           ];
      }, [activeModelData]);
 
+     // Панель сбоку (+1.2 по x) на телефоне уезжает за кадр: полуширина
+     // кадра в фокусе ≈ 1.30, а сама панель ≈ 1.1 в мировых единицах —
+     // сдвинутая вправо, она обрезается. Поэтому в мобильной раскладке
+     // панель уходит ПОД модель, где есть вертикальный запас.
+     //
+     // Смещение -2.2 подобрано под соседей по вертикали. Тор-подсветка
+     // висит на -1.0 и при scale 0.15 от радиуса 3 достаёт до -1.45.
+     // Панель высотой ~146px при scale 1.118 занимает ~163px, а 1 единица
+     // мира на этой дистанции ≈ 150px, значит её полувысота ≈ 0.54:
+     // от -1.66 до -2.74. Сверху зазор 0.21 до тора, снизу 0.39 до края
+     // кадра (полувысота tan(32°) * 5.01 ≈ 3.13). Обе величины проверены
+     // расчётом, а не на глаз.
      const htmlPosition = useMemo(() => {
           if (!activeModelData) return null;
+          if (isMobile) {
+               return [
+                    activeModelData.position[0],
+                    activeModelData.position[1] - 2.2,
+                    activeModelData.position[2]
+               ];
+          }
           return [
                activeModelData.position[0] + 1.2,
                activeModelData.position[1] + 0.5,
                activeModelData.position[2]
           ];
-     }, [activeModelData]);
+     }, [activeModelData, isMobile]);
 
      // -------------------------------------------------------------------------
      // OPT / BUGFIX: раньше window.addEventListener('wheel', ...) вызывался
@@ -470,6 +607,13 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
      // animate() запускался несколько раз на одном и том же объекте, а
      // transition() вызывался столько же раз. Теперь эффект с очисткой
      // плюс защита от повторного запуска — анимация стартует ровно один раз.
+     //
+     // ГЛАВНАЯ МОБИЛЬНАЯ ПОЧИНКА: выход из сцены висел ТОЛЬКО на 'wheel'.
+     // Тач-устройства это событие не генерируют вообще — палец на экране
+     // даёт touchstart/touchmove/touchend. То есть на телефоне сцена была
+     // ловушкой: попав внутрь портала, уйти дальше было невозможно, весь
+     // остальной сайт становился недостижим. Теперь тот же самый переход
+     // запускает вертикальный свайп — жестовый аналог прокрутки колесом.
      // -------------------------------------------------------------------------
      const hasStartedRef = useRef(false);
      const transitionTimeoutRef = useRef(null);
@@ -477,13 +621,18 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
      useEffect(() => {
           if (!animated) return;
 
+          // Стартовая точка анимации должна совпадать с фактическим
+          // положением камеры, иначе кадр «прыгает». На мобильном обзорная
+          // точка отодвинута до z = 13, поэтому и здесь она же.
+          const startZ = isMobile ? DEFAULT_CAM_POS_MOBILE.z : DEFAULT_CAM_POS.z;
+
           const handleStartAnimation = () => {
                if (hasStartedRef.current) return;
                hasStartedRef.current = true;
 
                orbitChange(false);
                animate(portalCamera.current.position, {
-                    z: [10, -3],
+                    z: [startZ, -3],
                     y: [0, 1.5],
                     duration: 3000,
                     alternate: true,
@@ -500,8 +649,53 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
           };
 
           window.addEventListener('wheel', handleStartAnimation, { passive: true, once: true });
-          return () => window.removeEventListener('wheel', handleStartAnimation);
-     }, [animated, orbitChange, portalCamera, blend, camera, transition]);
+
+          // Свайп отслеживается вручную: у touch нет события «прокрутки»,
+          // а сама страница не скроллится (канвас на весь экран).
+          let startY = null;
+          let startX = null;
+
+          const onTouchStart = (e) => {
+               const t = e.touches[0];
+               if (!t) return;
+               startY = t.clientY;
+               startX = t.clientX;
+          };
+
+          const onTouchMove = (e) => {
+               if (startY === null) return;
+               const t = e.touches[0];
+               if (!t) return;
+
+               const dy = startY - t.clientY;
+               const dx = Math.abs(t.clientX - startX);
+
+               // Требуем именно вертикальный жест: горизонтальные протяжки
+               // остаются за интерфейсом и не выкидывают из сцены случайно.
+               if (dy > SWIPE_THRESHOLD && dy > dx) {
+                    startY = null;
+                    handleStartAnimation();
+               }
+          };
+
+          const onTouchEnd = () => {
+               startY = null;
+               startX = null;
+          };
+
+          window.addEventListener('touchstart', onTouchStart, { passive: true });
+          window.addEventListener('touchmove', onTouchMove, { passive: true });
+          window.addEventListener('touchend', onTouchEnd, { passive: true });
+          window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+          return () => {
+               window.removeEventListener('wheel', handleStartAnimation);
+               window.removeEventListener('touchstart', onTouchStart);
+               window.removeEventListener('touchmove', onTouchMove);
+               window.removeEventListener('touchend', onTouchEnd);
+               window.removeEventListener('touchcancel', onTouchEnd);
+          };
+     }, [animated, orbitChange, portalCamera, blend, camera, transition, isMobile]);
 
      // OPT: таймер снимается при анмаунте, чтобы не дёргать колбэки
      // уже размонтированной сцены.
@@ -517,7 +711,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                <directionalLight position={DIR_LIGHT_POSITION} intensity={2} />
                <color attach="background" args={BG_ARGS} />
 
-               {MODELS_DATA.map((config) => (
+               {models.map((config) => (
                     <InteractiveModel
                          key={config.id}
                          config={config}
@@ -538,20 +732,20 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                               <Html
                                    position={htmlPosition}
                                    center
-                                   distanceFactor={10}
+                                   distanceFactor={isMobile ? PANEL_DISTANCE_FACTOR_MOBILE : 10}
                               >
-                                   <div style={PANEL_STYLE}>
+                                   <div style={isMobile ? PANEL_STYLE_MOBILE : PANEL_STYLE}>
                                         <button
                                              onClick={handleBack}
-                                             style={BACK_BUTTON_STYLE}
+                                             style={isMobile ? BACK_BUTTON_STYLE_MOBILE : BACK_BUTTON_STYLE}
                                              title="Back"
                                         >
-                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0088cc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                             <svg width={isMobile ? '16' : '12'} height={isMobile ? '16' : '12'} viewBox="0 0 24 24" fill="none" stroke="#0088cc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                                   <path d="M19 12H5" />
                                                   <path d="M12 19l-7-7 7-7" />
                                              </svg>
                                         </button>
-                                        <div style={PANEL_TITLE_STYLE}>
+                                        <div style={isMobile ? PANEL_TITLE_STYLE_MOBILE : PANEL_TITLE_STYLE}>
                                              {activeModelData.annotation.title}
                                         </div>
                                         <p style={PANEL_P_STYLE}>
@@ -570,8 +764,19 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                )}
 
                <Stars radius={100} depth={50} count={5000} factor={4} saturation={2} fade speed={3} />
-               <CameraRig activeId={cameraFocusId} controlsRef={controlsRef} />
-               {orbit && <OrbitControls ref={controlsRef} />}
+               <CameraRig activeId={cameraFocusId} controlsRef={controlsRef} isMobile={isMobile} />
+               {orbit && (
+                    <OrbitControls
+                         ref={controlsRef}
+                         /* Панорамирование на телефоне — способ потерять сцену:
+                            вернуть камеру обратно нечем, а вся раскладка
+                            построена вокруг центра. Вращение и пинч остаются. */
+                         enablePan={!isTouch}
+                         /* Палец проходит больше пикселей, чем мышь, поэтому
+                            при той же чувствительности сцена «улетает». */
+                         rotateSpeed={isTouch ? 0.6 : 1}
+                    />
+               )}
                <ConveyorBelt />
 
                <mesh position={GLOW_POSITION}>
@@ -589,7 +794,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                     <ringGeometry args={RING_ARGS} />
                     <meshBasicMaterial color={'black'} transparent opacity={0.4} />
                </mesh>
-               <AnimatedText visible={animated} size={0.6} position={TEXT_POSITION} text={'Scroll to next '} rotation={TEXT_ROTATION} TextGap={0.48} />
+               <AnimatedText visible={animated} size={0.6} position={TEXT_POSITION} text={isTouch ? HINT_TEXT_MOBILE : HINT_TEXT_DESKTOP} rotation={TEXT_ROTATION} TextGap={0.48} />
 
                <fog attach="fog" args={FOG_ARGS} />
           </>
@@ -604,6 +809,33 @@ const PORTAL_MESH_ROTATION = [0, -115 * (Math.PI / 180), 0];
 const PORTAL_CIRCLE_ARGS = [0.26, 64];
 const PORTAL_CAMERA_POSITION = [0, 0, 10];
 
+// Внутренняя камера портала. Мобильные значения:
+//
+// fov 64 вместо 50 — потому что горизонтальный обзор равен fov * aspect,
+// и в портрете (aspect ≈ 0.46) он схлопывается. При 50° видимая полуширина
+// на дистанции 8 составляет tan(25°) * 8 * 0.46 ≈ 1.72, при 64° — уже 2.31.
+// Выше не берём: за 70° начинается заметная дисторсия по краям.
+//
+// z 13 вместо 10 — вертикальный зигзаг занимает по высоте 6.4 единицы
+// против 2.2 у горизонтального ряда, обзорную точку нужно отодвинуть.
+const PORTAL_CAMERA_POSITION_MOBILE = [0, 0, 13];
+const PORTAL_CAMERA_FOV_DESKTOP = 50;
+const PORTAL_CAMERA_FOV_MOBILE = 64;
+
+// Зона нажатия на сам портал.
+//
+// Диск радиусом 0.26 стоит на z = -10.86, внешняя камера — на z = 45
+// с fov 30, то есть до портала ~56 единиц. Полувысота кадра там
+// tan(15°) * 56 ≈ 15.0, а половина экрана телефона — 422px, значит
+// 1 единица мира ≈ 28px. Портал выходит диаметром ~15px.
+//
+// 15px — это меньше трети рекомендованных 44px для пальца. Вход в сцену
+// физически невозможно надёжно нажать: попадание становится лотереей.
+// Поэтому на тач-устройствах поверх портала лежит невидимый диск
+// радиусом 0.8 (≈ 45px в диаметре) — геометрия и вид портала при этом
+// не меняются ни на пиксель.
+const PORTAL_HIT_ARGS = [0.8, 32];
+
 export function PortalToSceneTwo({ onTransitionComplete }) {
      const [blend, setBlend] = useState(0);
      const [cameraDefault, setCameraDefault] = useState(false);
@@ -614,6 +846,9 @@ export function PortalToSceneTwo({ onTransitionComplete }) {
 
      const isAnimating = useRef(false);
      const textTimeoutRef = useRef(null);
+
+     const isMobile = useIsMobile();
+     const isTouch = useIsTouch();
 
      // OPT: таймер снимается при анмаунте — иначе setAnimateText мог
      // сработать уже после удаления компонента.
@@ -646,12 +881,33 @@ export function PortalToSceneTwo({ onTransitionComplete }) {
      }, []);
 
      return (
-          <mesh ref={meshRef} position={PORTAL_MESH_POSITION} rotation={PORTAL_MESH_ROTATION} onClick={goToScene} >
-               <circleGeometry args={PORTAL_CIRCLE_ARGS} />
-               <MeshPortalMaterial blend={blend}>
-                    <PerspectiveCamera ref={cameraRef} makeDefault={cameraDefault} position={PORTAL_CAMERA_POSITION} />
-                    <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText} />
-               </MeshPortalMaterial>
-          </mesh>
+          <group position={PORTAL_MESH_POSITION} rotation={PORTAL_MESH_ROTATION}>
+               {/* Увеличенная зона нажатия — только для пальца и только до
+                   входа в сцену. После открытия портала диск убирается,
+                   чтобы не перехватывать клики по моделям внутри. */}
+               {isTouch && !orbit && (
+                    <mesh onClick={goToScene} visible={false}>
+                         <circleGeometry args={PORTAL_HIT_ARGS} />
+                         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+                    </mesh>
+               )}
+
+               <mesh ref={meshRef} onClick={goToScene} >
+                    <circleGeometry args={PORTAL_CIRCLE_ARGS} />
+                    <MeshPortalMaterial blend={blend}>
+                         <PerspectiveCamera
+                              ref={cameraRef}
+                              makeDefault={cameraDefault}
+                              position={isMobile ? PORTAL_CAMERA_POSITION_MOBILE : PORTAL_CAMERA_POSITION}
+                              /* fov задан явно, а не оставлен на дефолте: так
+                                 ResponsiveCamera видит base = 64 и ничего не
+                                 переписывает (next === base), вместо того чтобы
+                                 воевать с этой камерой за угол обзора. */
+                              fov={isMobile ? PORTAL_CAMERA_FOV_MOBILE : PORTAL_CAMERA_FOV_DESKTOP}
+                         />
+                         <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText} />
+                    </MeshPortalMaterial>
+               </mesh>
+          </group>
      );
 }

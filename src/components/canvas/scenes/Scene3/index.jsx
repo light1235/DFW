@@ -21,6 +21,7 @@ import { ModelFort } from "./model.jsx";
 
 import FlagText from "../Scene1/text.jsx";
 import TowerText from "./towerText.jsx";
+import { useIsMobile, useIsTouch } from "../../../../hooks/useIsMobile.js";
 
 // Регистрируем плагин ScrollTrigger
 gsap.registerPlugin(ScrollTrigger);
@@ -308,11 +309,15 @@ export function CameraLogger() {
 useGLTF.preload('model/scene3/scene-box.glb')
 
 
+// scale масштабирует уже собранную строку. Важно: prop `size` на ширину
+// строки почти не влияет — шаг между буквами задан константами TextGap/gap,
+// поэтому size 0.5 -> 0.34 сокращает пролёт всего с 7.14 до 7.05.
+// Ужать строку под узкий экран можно только масштабом всей группы.
 export function AnimatedText({ text = "Scroll to explore    ", visible = false, size, position = [183.0, 202.77, 24.08], rotation = [
      MathUtils.degToRad(0.5),
      MathUtils.degToRad(-41.6),
      MathUtils.degToRad(0.4)
-], TextGap = 0.38 }) {
+], TextGap = 0.38, scale = 1 }) {
      const groupRef = useRef();
      const lettersRef = useRef([]);
      const fontPath = "/zb.json";
@@ -375,7 +380,9 @@ export function AnimatedText({ text = "Scroll to explore    ", visible = false, 
      // 183.0, 202.77, 24.08
      return (
           <group ref={groupRef} visible={visible}>
-               <Center position={position} rotation={rotation}>
+               {/* scale на Center: сама точка position не масштабируется,
+                   сжимается только содержимое вокруг неё. */}
+               <Center position={position} rotation={rotation} scale={scale}>
                     {text.split("").map((char, index) => {
                          const posX = currentXOffset;
                          let charWidth = TextGap;
@@ -547,7 +554,22 @@ const curve = new THREE.CatmullRomCurve3([
      new THREE.Vector3(217.737, 198.714, -16.704) // Конец на 198.714
 ], false, 'catmullrom', 0.50);
 
-function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
+// Порог свайпа в пикселях: случайный тап не должен запускать полёт шлема.
+const SWIPE_START_PX = 24;
+
+// Доворот взгляда в конце полёта — только для узких экранов.
+//
+// Расчёт (fov 70, камера в конце кривой смотрит строго на +X):
+//   TowerText стоит на 5.38 единицы левее оси взгляда, а половина кадра
+//   в портрете — всего 3.52. То есть текст «Click to Go» вместе со стрелками
+//   целиком оставался ЗА границей кадра: подсказка о переходе была не видна.
+//
+// Доворот на 17.2° (сдвиг точки взгляда на -3.1 по Z) уводит текст на 1.75
+// от оси — он влезает, и при этом дверь остаётся в кадре (5.56 против 6.77).
+// Больший доворот (21.8°) уже выбрасывает за кадр саму дверь.
+const MOBILE_LOOK_Z_OFFSET = -3.1;
+
+function HelmetController({ scroll, destroy, monolith, PitScene, activeText, isMobile }) {
      const modelRef = useRef();
      const isAnimated = useRef(false);
      const { camera } = useThree();
@@ -562,8 +584,33 @@ function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
      });
 
      useEffect(() => {
+          // МОБИЛЬНЫЙ БЛОКЕР: единственным триггером полёта шлема было колесо
+          // мыши. На телефоне события 'wheel' не существует — сцена навсегда
+          // замирала на подсказке «Scroll to explore», а вместе с ней
+          // становились недостижимы дверь и весь дальнейший маршрут (Scene4+).
+          let touchStartY = null;
+
           const removeListeners = () => {
                window.removeEventListener('wheel', handleStartAnimation);
+               window.removeEventListener('touchstart', onTouchStart);
+               window.removeEventListener('touchmove', onTouchMove);
+          };
+
+          const onTouchStart = (e) => {
+               touchStartY = e.touches[0]?.clientY ?? null;
+          };
+
+          const onTouchMove = (e) => {
+               if (touchStartY === null) return;
+
+               const y = e.touches[0]?.clientY;
+               if (y === undefined) return;
+
+               // Направление не проверяем: колесо тоже реагировало на любое.
+               if (Math.abs(touchStartY - y) >= SWIPE_START_PX) {
+                    touchStartY = null;
+                    handleStartAnimation();
+               }
           };
 
           const handleStartAnimation = () => {
@@ -613,6 +660,8 @@ function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
           };
 
           window.addEventListener('wheel', handleStartAnimation, { passive: true });
+          window.addEventListener('touchstart', onTouchStart, { passive: true });
+          window.addEventListener('touchmove', onTouchMove, { passive: true });
 
           return () => {
                removeListeners();
@@ -654,7 +703,7 @@ function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
                     const rightLook = new THREE.Vector3(
                          camera.position.x + 10,
                          camera.position.y,
-                         camera.position.z
+                         camera.position.z + (isMobile ? MOBILE_LOOK_Z_OFFSET : 0)
                     );
                     lookAtTarget.lerpVectors(lineLook, rightLook, alpha);
                } else {
@@ -674,16 +723,32 @@ function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
 }
 
 // Главный экспорт компонента шлема
-export function AnimatedHelmet({ scroll, destroy, monolith, PitScene, activeText }) {
+export function AnimatedHelmet({ scroll, destroy, monolith, PitScene, activeText, isMobile }) {
      return (
 
           <Suspense fallback={null}>
-               <HelmetController activeText={activeText} PitScene={PitScene} scroll={scroll} destroy={destroy} monolith={monolith} />
+               <HelmetController isMobile={isMobile} activeText={activeText} PitScene={PitScene} scroll={scroll} destroy={destroy} monolith={monolith} />
           </Suspense>
      );
 }
 
+// Подсказка перед полётом. Расчёт при fov 70, дистанция до камеры 6.65:
+//   строка занимает 7.14 единицы, то есть ±3.57 от центра,
+//   а половина кадра в портрете — всего 2.15. Текст обрезался с двух сторон,
+//   то есть пользователь не мог прочитать саму инструкцию.
+//   Предельный масштаб: 0.60 (iPhone 12), 0.59 (узкий Android), 0.74 (SE).
+//   Берём 0.55 — влезает на всех проверенных экранах с запасом.
+const HINT_SCALE_MOBILE = 0.55;
+
+// На мобильном TowerText уменьшаем: при scale 1 группа «Click / to Go / >>>»
+// имеет полупролёт 2.75 и не влезает даже после доворота камеры (4.67 против
+// 3.88). При 0.65 требуется 3.70 — влезает на всех проверенных экранах.
+const TOWER_SCALE_MOBILE = 0.65;
+
 const ExcavationPitScene = ({ monolith, PitScene }) => {
+
+     const isMobile = useIsMobile();
+     const isTouch = useIsTouch();
 
      const [scrollText, setScrollText] = useState(false);
      const [helmAnimation, setHelmAnimation] = useState(false);
@@ -757,10 +822,22 @@ const ExcavationPitScene = ({ monolith, PitScene }) => {
                <ModelGrate />
                <ModelDamaged />
 
-               <AnimatedText visible={scrollText} size={0.5} />
-               {helmAnimation && <AnimatedHelmet activeText={setActivePortalText} PitScene={PitScene} monolith={monolith} scroll={setScrollText} destroy={setDestroy} />}
+               {/* На тач-устройстве «Scroll» — ложная инструкция: колеса нет,
+                   и пользователь не понимает, что делать. Говорим «Swipe». */}
+               <AnimatedText
+                    visible={scrollText}
+                    text={isTouch ? "Swipe to explore    " : "Scroll to explore    "}
+                    size={0.5}
+                    scale={isMobile ? HINT_SCALE_MOBILE : 1}
+               />
+               {helmAnimation && <AnimatedHelmet isMobile={isMobile} activeText={setActivePortalText} PitScene={PitScene} monolith={monolith} scroll={setScrollText} destroy={setDestroy} />}
 
-               <group visible={activePortalText} position={[228.61, 198.77, -22.08]} rotation={[0, 3.4 + Math.PI / 2, 0]}>
+               <group
+                    visible={activePortalText}
+                    position={[228.61, 198.77, -22.08]}
+                    rotation={[0, 3.4 + Math.PI / 2, 0]}
+                    scale={isMobile ? TOWER_SCALE_MOBILE : 1}
+               >
                     <TowerText active={true} />
                </group>
                <OpenDoor enter={enterToPortal} position={[238.61, 194.77, -20.08]}

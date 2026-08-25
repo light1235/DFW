@@ -3,6 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Float } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
+
 // OPT: убраны неиспользуемые импорты Outlines, Scanline, BlendFunction и
 // дефолтный React (JSX-рантайм автоматический, "React." в файле не встречается).
 
@@ -36,6 +38,150 @@ const CONFIG = {
      keyLightColor: '#ffdaaa',
      fillLightIntensity: 0.7,
 };
+
+// --- CONFIG: мобильная раскладка (только для этой сцены) ---------------------
+//
+// Что было не так. Камера жёстко ставилась в (0, -7.5, 9.5) с fov 52. Но fov в
+// three.js — ВЕРТИКАЛЬНЫЙ, а горизонтальный обзор равен fov * aspect. Десктоп:
+// aspect ≈ 1.78. Телефон в портрете: aspect ≈ 0.46, то есть по горизонтали
+// влезает вчетверо меньше. Три монолита занимают ~11.9 единицы в ширину и
+// просто обрезались по краям, а стрелка (x = 7) уезжала за кадр целиком.
+//
+// Почему не спас ResponsiveCamera: он расширяет fov только до своего потолка
+// maxFov = 50 и никогда не сужает ниже собственного fov сцены. У Scene4 fov 52,
+// то есть уже выше потолка → next === base и компонент выходит, ничего не
+// записав (см. ResponsiveCamera.jsx, ветка `if (next - base < 0.01) return`).
+// Значит кадр под узкий экран нужно считать здесь.
+//
+// Как решено: не только шире fov, но и отъезд камеры + уменьшение группы
+// монолитов. Одним fov не обойтись — чтобы вернуть горизонтальный охват при
+// aspect 0.46, вертикальный fov пришлось бы задрать до ~117°, а это уже
+// «рыбий глаз» с выламыванием вертикалей монолитов по краям.
+const MOBILE = {
+     // 62° против десктопных 52°: заметно шире, но ещё без искажений.
+     fov: 62,
+     cameraY: -8.5,
+     // Точка взгляда ниже десктопной (6.5): в узкий кадр надо уместить всю
+     // высоту монолитов, а не только их верх.
+     lookAtY: 1.5,
+     // Уменьшаем саму группу монолитов. Иначе, чтобы уложить её по ширине,
+     // камеру пришлось бы отодвинуть настолько далеко, что композиция
+     // распадается: монолиты превращаются в тонкие полоски по центру.
+     monolithScale: 0.62,
+     // Границы отъезда камеры. Минимум — чтобы в ландшафте (низкая высота
+     // кадра) монолиты влезали по вертикали; максимум — чтобы на сверхузких
+     // экранах камера не улетала в бесконечность.
+     minDistance: 12.5,
+     maxDistance: 24,
+     // Запас по бокам, чтобы монолиты не липли к краям кадра.
+     sideMargin: 1.12,
+     // Насколько основание монолитов уводится ПОД нижнюю кромку кадра.
+     // 0 поставило бы его ровно на кромку, и при малейшем повороте камеры
+     // пальцем полоса пустого неба выглянула бы обратно.
+     baseMargin: 1.0,
+     // Разрешённый разброс вертикального вращения вокруг расчётного угла.
+     polarRange: Math.PI * 0.1,
+     // Стрелка: зазор над вершиной монолитов, плоскость по Z и масштаб.
+     arrowGap: 2.2,
+     arrowZ: 2,
+     arrowScale: 0.5,
+     // Мобильный бюджет кадра: меньше звёзд и облаков, дешевле текстура
+     // облака, тени выключены (см. shadows у <Monoliths />).
+     starCount: 450,
+     cloudDensity: 18,
+     cloudTextureSize: 256,
+};
+
+// Основание монолитов в локальных координатах их групп. Раньше -10 было
+// зашито прямо в basePosition; теперь из него же считаются сдвиг группы вниз
+// и высота стрелки, поэтому значение должно быть одно.
+const MONOLITH_BASE_Y = -10;
+
+// Половина габарита группы монолитов по X — считаем из CONFIG, чтобы правка
+// monolithWidth/monolithGap автоматически меняла и мобильный кадр.
+// Крайний монолит: центр на (count-1)/2 * (width + gap), плюс его полуширина
+// (боковые монолиты чуть уже центрального — коэффициент 0.96 из Monoliths).
+const MONOLITH_HALF_WIDTH =
+     ((CONFIG.monolithCount - 1) / 2) * (CONFIG.monolithWidth + CONFIG.monolithGap) +
+     (CONFIG.monolithWidth * 0.96) / 2;
+
+// Десктопный кадр — ровно те значения, что стояли в коде до адаптива.
+const DESKTOP_FRAMING = {
+     fov: 52,
+     position: [0, -7.5, 9.5],
+     lookAt: [0, 6.5, 0],
+};
+
+// Стрелка. На десктопе она висит справа-снизу в пустоте.
+//
+// На мобилке свободного места нет ни справа, ни снизу. Справа: монолиты
+// занимают ~89% полуширины кадра, а в плоскости стрелки (z = 2) свободная
+// полоса всего ~0.4 юнита — её габарит 1.6 туда не влезает. Снизу: основание
+// монолитов теперь уведено под кадр (groupOffsetY), пустого неба там больше
+// нет. Остаётся небо над монолитами, поэтому мобильная стрелка привязана к их
+// вершине через MOBILE.arrowGap и считается в компоненте сцены.
+const ARROW_ROTATION = [Math.PI / 4, 0, 0];
+const DESKTOP_ARROW = { position: [7, -1, 2], scale: 0.4 };
+
+const DEG_TO_RAD = Math.PI / 180;
+
+/**
+ * Считает мобильный кадр под фактические пропорции вьюпорта.
+ *
+ * ПО ГОРИЗОНТАЛИ. Полуширина, которую камера видит на расстоянии d:
+ *     halfW = d * tan(fovY / 2) * aspect
+ * Нужно halfW >= габарита монолитов, отсюда d = halfWidthNeeded / (tan * aspect).
+ * Aspect стоит в знаменателе — поэтому на узком экране камера отъезжает.
+ *
+ * ПО ВЕРТИКАЛИ. Камера смотрит вверх (lookAtY выше cameraY), значит нижняя
+ * кромка кадра — луч под углом (pitch - fovY/2) к горизонту. Считаем, на какой
+ * высоте он пересекает плоскость монолитов (z = 0), и опускаем группу так,
+ * чтобы основание ушло ниже этой линии. Без этого под монолитами остаётся
+ * полоса пустого неба — на портретном экране это ~11% высоты кадра.
+ *
+ * ОРБИТА. OrbitControls работает в сферических координатах вокруг target,
+ * поэтому его minDistance/maxDistance сравниваются с радиусом (гипотенузой),
+ * а не с z камеры, а наклон ограничен min/maxPolarAngle. Если расчётная
+ * позиция выходит за эти лимиты, update() каждый кадр тянет камеру назад и
+ * кадр не собирается вообще — поэтому лимиты считаются здесь, из самой позиции.
+ */
+function computeMobileFraming(width, height) {
+     // Защита от деления на ноль в первый кадр, пока канвас ещё не измерен.
+     const rawAspect = width / height;
+     const aspect = rawAspect > 0 && Number.isFinite(rawAspect) ? rawAspect : 1;
+
+     const halfFov = (MOBILE.fov * DEG_TO_RAD) / 2;
+     const halfWidthNeeded = MONOLITH_HALF_WIDTH * MOBILE.monolithScale * MOBILE.sideMargin;
+
+     const distance = THREE.MathUtils.clamp(
+          halfWidthNeeded / (Math.tan(halfFov) * aspect),
+          MOBILE.minDistance,
+          MOBILE.maxDistance,
+     );
+
+     const rise = MOBILE.lookAtY - MOBILE.cameraY;
+     const pitch = Math.atan2(rise, distance);
+     const frameBottomY = MOBILE.cameraY + distance * Math.tan(pitch - halfFov);
+
+     const scaledBaseY = MONOLITH_BASE_Y * MOBILE.monolithScale;
+     // Math.min(0, ...): если основание и так ниже кадра, поднимать его нельзя.
+     const groupOffsetY = Math.min(0, frameBottomY - MOBILE.baseMargin - scaledBaseY);
+
+     const radius = Math.hypot(rise, distance);
+     const polar = Math.acos(-rise / radius);
+
+     return {
+          distance,
+          groupOffsetY,
+          // Запас вокруг радиуса: зум выключен, эти лимиты нужны только чтобы
+          // не воевать с лерпом камеры.
+          minDistance: radius * 0.8,
+          maxDistance: radius * 1.2,
+          minPolarAngle: Math.max(0.02, polar - MOBILE.polarRange),
+          maxPolarAngle: Math.min(Math.PI - 0.02, polar + MOBILE.polarRange),
+     };
+}
+
 
 // --- Вспомогательные функции генерации текстур ---
 function generateCloudTexture(width = 512, height = 512) {
@@ -155,10 +301,11 @@ const SKY_GEOMETRY_ARGS = [140, 32, 32];
 const SKY_SCALE = [-1, 1, 1];
 const SKY_POSITION = [0, 10, 0];
 
-function BackgroundSky() {
+function BackgroundSky({ starCount = CONFIG.starCount }) {
      const shaderRef = useRef();
      const starsRef = useRef();
      const starTexture = useMemo(() => generateStarTexture(), []);
+
 
      // -------------------------------------------------------------------------
      // OPT / МЁРТВЫЙ КОД: раньше здесь генерировались ещё массивы scales и
@@ -175,12 +322,18 @@ function BackgroundSky() {
      // разброс размеров звёзд не работали никогда, все звёзды всегда рисовались
      // одним размером из uniform size={1.5}. Картинка не меняется.
      // -------------------------------------------------------------------------
+     // МОБИЛЬНОЕ: количество звёзд теперь параметр, а не константа.
+     // 1200 точек с AdditiveBlending и sizeAttenuation — это 1200 полупрозрачных
+     // спрайтов, которые на мобильном GPU бьют по филлрейту (каждый пиксель
+     // читается-смешивается заново). На телефоне 450 звёзд визуально почти
+     // неотличимы: экран мельче, а звёзды и так рассыпаны по куполу радиусом 120.
      const positions = useMemo(() => {
-          const count = CONFIG.starCount;
+          const count = starCount;
           const pos = new Float32Array(count * 3);
           const radius = 120;
 
           for (let i = 0; i < count; i++) {
+
                const u = Math.random();
                const v = Math.random() * 0.75 + 0.25;
                const theta = u * Math.PI * 2;
@@ -191,7 +344,8 @@ function BackgroundSky() {
                pos[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
           }
           return pos;
-     }, []);
+     }, [starCount]);
+
 
      // OPT: args для bufferAttribute тоже со стабильной ссылкой.
      const positionArgs = useMemo(() => [positions, 3], [positions]);
@@ -258,9 +412,18 @@ const CloudShaderMaterial = {
   `,
 };
 
-function CloudLayer() {
+// МОБИЛЬНОЕ: density и размер текстуры стали параметрами.
+// Облака — большие полупрозрачные плоскости (размер 11..27 единиц), они
+// перекрывают друг друга и весь кадр. Это худший случай для мобильного GPU:
+// оверdraw по всему экрану, причём с transparent + DoubleSide. На узком экране
+// половина облаков всё равно за кадром (они разлетаются на x = ±10..±28,
+// а видимая ширина кадра ~14 единиц), поэтому 18 вместо 28 ничего не отнимает
+// визуально. Текстура 256 вместо 512 — вчетверо меньше памяти, а облако и так
+// размыто радиальными градиентами, разницы не видно.
+function CloudLayer({ density = CONFIG.cloudDensity, textureSize = 512 }) {
      const groupRef = useRef();
-     const cloudTexture = useMemo(() => generateCloudTexture(512, 512), []);
+     const cloudTexture = useMemo(() => generateCloudTexture(textureSize, textureSize), [textureSize]);
+
 
      const cloudMaterial = useMemo(() => {
           return new THREE.ShaderMaterial({
@@ -288,6 +451,11 @@ function CloudLayer() {
      // детерминированный (seed 98765), и порядок вызовов задаёт положение
      // каждого облака. Любой лишний, убранный или переставленный вызов rand()
      // сдвинет всю последовательность и раскидает облака по другим местам.
+     //
+     // Поэтому мобильное сокращение сделано именно урезанием ЧИСЛА ИТЕРАЦИЙ
+     // с конца (density вместо CONFIG.cloudDensity), а не фильтрацией по
+     // положению: первые 18 облаков получают ровно те же координаты, что и на
+     // десктопе, просто последних 10 нет. Композиция не разъезжается.
      const cloudPuffs = useMemo(() => {
           const puffs = [];
           let s = 98765;
@@ -296,7 +464,8 @@ function CloudLayer() {
                return s / 233280;
           };
 
-          for (let i = 0; i < CONFIG.cloudDensity; i++) {
+          for (let i = 0; i < density; i++) {
+
                const isLeft = i % 2 === 0;
                const x = isLeft ? -10 - rand() * 18 : 10 + rand() * 18;
                const y = -2 + rand() * 28;
@@ -310,7 +479,8 @@ function CloudLayer() {
                });
           }
           return puffs;
-     }, []);
+     }, [density]);
+
 
      useFrame((state) => {
           const group = groupRef.current;
@@ -351,9 +521,20 @@ function CloudLayer() {
 // объявлялся заново для каждого монолита на каждом кадре.
 const MONOLITH_DURATION = 1.6; // Длительность роста одного монолита в секундах
 
-function Monoliths() {
+// МОБИЛЬНОЕ: groupScale уменьшает всю композицию монолитов, shadows включает
+// или выключает отбрасывание теней.
+//
+// Про тени. Раньше монолиты стояли с castShadow/receiveShadow, а под ними
+// лежала плоскость 100x100 с shadowMaterial. Но проверьте <Canvas> в
+// ViewportCanvas.jsx: атрибут shadows там не выставлен, значит
+// gl.shadowMap.enabled === false и вся эта machinery не рисует ничего — тени
+// в сцене не видны ни на десктопе, ни на мобиле. На телефоне отключаем их
+// явно: если shadowMap когда-нибудь включат глобально, мобильный GPU не
+// получит внезапный дополнительный depth-проход на плоскость 100x100.
+function Monoliths({ groupScale = 1, groupOffsetY = 0, shadows = true }) {
      const meshRefs = useRef([]);
      const animTime = useRef(0);
+
      // OPT: флаг завершения анимации — см. комментарий в useFrame.
      const isDone = useRef(false);
 
@@ -387,7 +568,7 @@ function Monoliths() {
 
                list.push({
                     id: i,
-                    basePosition: [x, -10, z],
+                    basePosition: [x, MONOLITH_BASE_Y, z],
                     height,
                     args: [width, height, baseD],
                     delay: Math.abs(offsetIndex) * 0.2, // Каскадный задержка роста
@@ -454,8 +635,20 @@ function Monoliths() {
                isDone.current = true;
           }
      });
+     // МОБИЛЬНОЕ: scale и сдвиг вниз на корневой группе. Пивот дочерних групп
+     // уже стоит у основания (MONOLITH_BASE_Y), поэтому ни уменьшение, ни сдвиг
+     // не ломают анимацию роста снизу вверх — она идёт в локальных координатах.
+     //
+     // Порядок трансформаций важен: матрица объекта в three.js собирается как
+     // T * R * S (Object3D.updateMatrix → matrix.compose), то есть позиции
+     // детей сначала умножаются на scale и только потом сдвигаются. Основание
+     // оказывается на MONOLITH_BASE_Y * groupScale + groupOffsetY — ровно из
+     // этой формулы groupOffsetY и выведен в computeMobileFraming.
+     //
+     // position-y вместо position={[0, y, 0]}: пронзающий проп R3F пишет одно
+     // число и не создаёт новый массив на каждом рендере.
      return (
-          <group position={[0, 0, 0]}>
+          <group position-y={groupOffsetY} scale={groupScale}>
                {monolithData.map((item, index) => (
                     /* Пивот закрепите у основания (-10), чтобы масштабирование scale.y шло снизу вверх */
                     <group
@@ -464,50 +657,120 @@ function Monoliths() {
                          ref={(el) => (meshRefs.current[index] = el)}
                          scale={[1, 0, 1]} // Начинаем с 0% по оси Y
                     >
-                         <mesh position={[0, item.height / 2, 0]} material={material} castShadow receiveShadow>
+                         <mesh
+                              position={[0, item.height / 2, 0]}
+                              material={material}
+                              castShadow={shadows}
+                              receiveShadow={shadows}
+                         >
                               <boxGeometry args={item.args} />
                          </mesh>
                     </group>
                ))}
 
-               {/* Тень на земле */}
-               <mesh position={[0, -10.1, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                    <planeGeometry args={[100, 100]} />
-                    <shadowMaterial opacity={0.6} />
-               </mesh>
+               {/* Тень на земле. На мобиле плоскость не рендерим вообще:
+                   без castShadow у монолитов рисовать на ней нечего. */}
+               {shadows && (
+                    <mesh position={[0, -10.1, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                         <planeGeometry args={[100, 100]} />
+                         <shadowMaterial opacity={0.6} />
+                    </mesh>
+               )}
           </group>
      );
 }
 
-function CameraController() {
+/**
+ * Кадр камеры. Все числа приходят готовыми из computeMobileFraming — здесь
+ * только перевод в Vector3 и лимиты OrbitControls.
+ */
+function CameraController({ isMobile, mobileFraming }) {
      const { camera } = useThree();
      const controlsRef = useRef();
+     const didSnap = useRef(false);
 
-     const targetPos = useMemo(() => new THREE.Vector3(0, -7.5, 9.5), []);
-     const targetLookAt = useMemo(() => new THREE.Vector3(0, 6.5, 0), []);
+     const framing = useMemo(() => {
+          if (!isMobile || !mobileFraming) {
+               return {
+                    position: new THREE.Vector3(...DESKTOP_FRAMING.position),
+                    lookAt: new THREE.Vector3(...DESKTOP_FRAMING.lookAt),
+                    minDistance: 4,
+                    maxDistance: 45,
+                    minPolarAngle: 0,
+                    maxPolarAngle: Math.PI,
+               };
+          }
+
+          return {
+               position: new THREE.Vector3(0, MOBILE.cameraY, mobileFraming.distance),
+               lookAt: new THREE.Vector3(0, MOBILE.lookAtY, 0),
+               minDistance: mobileFraming.minDistance,
+               maxDistance: mobileFraming.maxDistance,
+               minPolarAngle: mobileFraming.minPolarAngle,
+               maxPolarAngle: mobileFraming.maxPolarAngle,
+          };
+     }, [isMobile, mobileFraming]);
+
+     // fov ставим здесь, а не только в родительском useEffect: при повороте
+     // экрана родительский эффект не перезапускается (в его зависимостях нет
+     // размеров), а этот useMemo — да.
+     useEffect(() => {
+          const nextFov = isMobile ? MOBILE.fov : DESKTOP_FRAMING.fov;
+          if (Math.abs(camera.fov - nextFov) < 0.01) return;
+          camera.fov = nextFov;
+          camera.updateProjectionMatrix();
+     }, [camera, isMobile]);
 
      useFrame((_, delta) => {
-          if (controlsRef.current) {
-               const t = Math.min(delta * 2.5, 1);
-               camera.position.lerp(targetPos, t);
-               controlsRef.current.target.lerp(targetLookAt, t);
-               controlsRef.current.update();
+          const controls = controlsRef.current;
+          if (!controls) return;
+
+          // Первый кадр — ставим камеру в кадр сразу, без лерпа. Раньше это
+          // делал useEffect в самой сцене, но там же висели таймеры постера,
+          // и любое изменение размеров вьюпорта перезаряжало бы их.
+          if (!didSnap.current) {
+               camera.position.copy(framing.position);
+               controls.target.copy(framing.lookAt);
+               controls.update();
+               didSnap.current = true;
+               return;
           }
+
+          const t = Math.min(delta * 2.5, 1);
+          camera.position.lerp(framing.position, t);
+          controls.target.lerp(framing.lookAt, t);
+          controls.update();
      });
 
      return (
           <OrbitControls
                ref={controlsRef}
-               enablePan
+               // МОБИЛЬНОЕ: pan отключён. На тач-экране pan вешается на два
+               // пальца, и любой пинч уводит камеру в сторону — вернуться
+               // пользователь не сможет, так как зум тут выключен и никакого
+               // «reset» нет. На десктопе pan оставлен как было.
+               enablePan={!isMobile}
                enableZoom={false} // 1. Вимикаємо зум сцени
-               enableRotate
-               rotateSpeed={0.8}
+               enableRotate={!isMobile}
+               // Палец проходит по экрану больший путь в пикселях, чем мышь на
+               // тот же жест, поэтому чувствительность вращения ниже.
+               rotateSpeed={isMobile ? 0.45 : 0.8}
+               // ИСПРАВЛЕНО: здесь стояли фиксированные 0.28π..0.62π, и
+               // расчётный угол камеры (≈0.69π на портретной дистанции) в них
+               // НЕ влезал. OrbitControls.update() каждый кадр возвращал камеру
+               // на кромку 0.62π, то есть заданный низкий ракурс не выставлялся
+               // вообще. Теперь лимиты — это расчётный угол ± MOBILE.polarRange,
+               // так что целевая позиция всегда достижима, а вертикальный люфт
+               // пальцем остаётся ограниченным.
+               minPolarAngle={framing.minPolarAngle}
+               maxPolarAngle={framing.maxPolarAngle}
                // zoomSpeed більше не потрібен
-               minDistance={4}
-               maxDistance={45}
+               minDistance={framing.minDistance}
+               maxDistance={framing.maxDistance}
           />
      );
 }
+
 
 export function ExtrudedArrow() {
      // Крок 1: Створюємо геометрію ОДИН раз і зберігаємо в пам'яті
@@ -563,29 +826,69 @@ export function ExtrudedArrow() {
 
 // --- Главный экспортируемый компонент СЦЕНЫ (для вставки ВНУТРЬ вашего <Canvas>) ---
 export default function GoldenMonolithScene({ cameraMono, poster }) {
-     const { camera } = useThree()
+     const { size } = useThree();
      const [extrude, setExtrude] = useState(false);
+     const isMobile = useIsMobile();
+
+     // Мобильный кадр считается ОДИН раз здесь и раздаётся вниз: камере
+     // (дистанция и лимиты орбиты), монолитам (сдвиг вниз) и стрелке (высота).
+     // Раньше дистанция считалась внутри CameraController — теперь у всех трёх
+     // потребителей один источник, иначе они разъезжаются между собой.
+     const mobileFraming = useMemo(
+          () => (isMobile ? computeMobileFraming(size.width, size.height) : null),
+          [isMobile, size.width, size.height],
+     );
+
+     // Пропы стрелки — одним мемоизированным объектом, а не литералами в JSX:
+     // иначе position/scale были бы новыми массивами на каждом рендере и R3F
+     // переписывал бы трансформ группы вхолостую.
+     const arrow = useMemo(() => {
+          if (!isMobile || !mobileFraming) return DESKTOP_ARROW;
+
+          // Привязка к вершине монолитов, а не абсолютная координата: вершина
+          // теперь зависит от groupOffsetY, то есть от пропорций экрана.
+          const topY =
+               (MONOLITH_BASE_Y + CONFIG.monolithHeight) * MOBILE.monolithScale +
+               mobileFraming.groupOffsetY;
+
+          return {
+               position: [0, topY + MOBILE.arrowGap, MOBILE.arrowZ],
+               scale: MOBILE.arrowScale,
+          };
+     }, [isMobile, mobileFraming]);
+
+     // Только таймеры сценария. Расстановка камеры переехала в CameraController
+     // (первый кадр useFrame): здесь она держала в зависимостях размеры кадра,
+     // а на телефоне вьюпорт меняется не только при повороте, но и когда при
+     // скролле схлопывается адресная строка — эффект перезапускался бы и ставил
+     // вторую пару setTimeout, вызывая poster(true) дважды.
      //
+     // По той же причине в зависимостях нет `extrude`: этот эффект сам его и
+     // меняет через setExtrude(true), то есть раньше перезаряжал себя. Плюс
+     // добавлен clearTimeout — до этого таймеры дёргали poster у уже
+     // размонтированного компонента.
      useEffect(() => {
-          // Выполнять установку параметров только если флаг активен
           if (!cameraMono) return;
 
-          camera.position.set(0, -7.5, 9.5);
-          camera.fov = 52;
-          camera.updateProjectionMatrix();
-          setTimeout(() => {
+          const posterTimer = setTimeout(() => {
                poster(true)
           }, 5500)
-          setTimeout(() => {
+          const extrudeTimer = setTimeout(() => {
                setExtrude(true);
           }, 4000)
 
-     }, [camera, cameraMono, poster, extrude]);
+          return () => {
+               clearTimeout(posterTimer);
+               clearTimeout(extrudeTimer);
+          };
+     }, [cameraMono, poster]);
 
      return (
+
           <>
                {/* Фон неба и звездное поле */}
-               <BackgroundSky />
+               <BackgroundSky starCount={isMobile ? MOBILE.starCount : CONFIG.starCount} />
+
 
                {/* Источники света пресета Golden Twilight */}
                <ambientLight intensity={0.25} />
@@ -598,9 +901,19 @@ export default function GoldenMonolithScene({ cameraMono, poster }) {
 
 
                {/* Облака */}
-               <CloudLayer />
-               {cameraMono && <Monoliths />}
-               {cameraMono && <CameraController />}
+               <CloudLayer
+                    density={isMobile ? MOBILE.cloudDensity : CONFIG.cloudDensity}
+                    textureSize={isMobile ? MOBILE.cloudTextureSize : 512}
+               />
+               {cameraMono && (
+                    <Monoliths
+                         groupScale={isMobile ? MOBILE.monolithScale : 1}
+                         groupOffsetY={mobileFraming ? mobileFraming.groupOffsetY : 0}
+                         shadows={!isMobile}
+                    />
+               )}
+               {cameraMono && <CameraController isMobile={isMobile} mobileFraming={mobileFraming} />}
+
 
 
                <Float
@@ -610,9 +923,10 @@ export default function GoldenMonolithScene({ cameraMono, poster }) {
                     rotationIntensity={0}        // ПОВНІСТЮ ВИМИКАЄМО НАХИЛ ПРИ ПАРІННІ
                     axis="y"                     // СУВОРO ФІКСУЄМО РУХ ЛИШЕ ПО ОСІ Y
                >
-                    <group position={[7, -1, 2]} rotation={[Math.PI / 4, 0, 0]} scale={0.4}>
+                    <group position={arrow.position} rotation={ARROW_ROTATION} scale={arrow.scale}>
                          {extrude && <ExtrudedArrow />}
                     </group>
+
                </Float>
 
                {/* Пост-обработка (Glow & Vignette) */}

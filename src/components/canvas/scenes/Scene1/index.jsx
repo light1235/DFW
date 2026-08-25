@@ -7,6 +7,7 @@ import { Model } from "./levels.jsx";
 import { ConeLaser } from "./Laser.jsx";
 import PortalText from "./PortalText.jsx";
 import { ScrollCameraPath } from "../../ViewportCanvas.jsx";
+import { useIsMobile, useIsTouch } from "../../../../hooks/useIsMobile.js";
 // OPT: убраны неиспользуемые импорты RainbowLaser, SplineEditor и
 // PortalToSceneTwo. Последний создавал циклическую зависимость
 // Scene1 -> Scene2 -> Scene1 (Scene2 импортирует ExpoScene).
@@ -16,7 +17,15 @@ export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
   // Хранилище для исходной позиции камеры
   const initialPosition = useRef(null);
 
+  // Параллакс от указателя имеет смысл только для мыши, которая висит над
+  // сценой без нажатия. На тач-устройстве pointer обновляется лишь в момент
+  // касания, поэтому во время свайпа камера получала резкий рывок в сторону
+  // пальца, накладывающийся на полёт по сплайну. Отключаем.
+  const isTouch = useIsTouch();
+
   useFrame((state) => {
+    if (isTouch) return;
+
     const { camera, pointer } = state;
 
     // Запоминаем начальные координаты камеры при первом кадре
@@ -192,6 +201,16 @@ const LASER_POSITION = [-3, 4.6, 6.2];
 const LASER_ROTATION = [40, 100, Math.PI / 1.67];
 
 const FLAG_GROUP_POSITION = [-6, 5, 16];
+// Мобильный вариант: X сдвинут в 0.
+//
+// Камера стартует в [0, 10, 45], то есть её ось зрения лежит в плоскости
+// x = 0 — центр экрана по горизонтали приходится ровно на x = 0 на любой
+// глубине. Блок текста шириной ~15 юнитов при десктопном обзоре (видимая
+// полуширина ~14 юнитов на глубине z = 16) влезал даже со смещением -6.
+// В портрете полуширина падает до ~6.4 юнитов, поэтому левая половина
+// текста оказывалась за краем экрана: было видно "level" вместо
+// "Next level" и "ding." вместо "building.".
+const FLAG_GROUP_POSITION_MOBILE = [0, 5, 16];
 const FLAG_GROUP_ROTATION = [-0.1, 0, 0];
 
 const MODEL_ROTATION = [-Math.PI / -2.0, 0, 0];
@@ -242,6 +261,9 @@ const ExpoScene = () => {
   const [isLaserOn, setIsLaserOn] = useState(false);
   const [portalTExt, setPortalTExt] = useState(false);
 
+  const isMobile = useIsMobile();
+  const flagGroupPosition = isMobile ? FLAG_GROUP_POSITION_MOBILE : FLAG_GROUP_POSITION;
+
   // OPT: раньше не было массива зависимостей — эффект перезапускался
   // после КАЖДОГО рендера и плодил setTimeout без отмены.
   useEffect(() => {
@@ -256,7 +278,7 @@ const ExpoScene = () => {
     <group visible={true}>
 
       <CameraParallax intensity={1} factor={0.05} />
-      <group position={FLAG_GROUP_POSITION} rotation={FLAG_GROUP_ROTATION}>
+      <group position={flagGroupPosition} rotation={FLAG_GROUP_ROTATION}>
         <FlagText active={setActiveScrollCamera} />
       </group>
       <mesh rotation={PLANE_ROTATION} position={PLANE_POSITION} >

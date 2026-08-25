@@ -1,10 +1,12 @@
-import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useMemo, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, useGLTF } from "@react-three/drei";
 import ContactText from "./contact-text.jsx";
 import { MathUtils } from "three";
 import { ModelTruck } from "./Truck.jsx";
+import { useIsMobile, useIsTouch } from "../../../../hooks/useIsMobile.js";
+
 
 // Сцены GLTF кешируются глобально, поэтому конвертируем материалы один раз
 // и помечаем их флагом: повторный проход ничего не пересоздаёт
@@ -34,17 +36,81 @@ const CAMERA_ROTATION = [
      MathUtils.degToRad(-54.2),
      MathUtils.degToRad(-39.9),
 ];
+const CAMERA_FOV = 50;
+
+// -----------------------------------------------------------------------------
+// МОБИЛЬНАЯ РАСКЛАДКА
+// В портрете горизонтальный обзор сжимается, и широкая надпись «Contact too us.»
+// вместе с грузовиком вылезает за кадр. Угол камеры не трогаем — он подобран под
+// свет и тени. Вместо этого расширяем fov и отводим камеру назад ВДОЛЬ ЕЁ ЖЕ
+// взгляда: композиция и ракурс сохраняются, просто в кадр влезает вся сцена.
+// -----------------------------------------------------------------------------
+const MOBILE_CAMERA_FOV = 72;
+const MOBILE_CAMERA_BACK_OFFSET = 5.5;
+
+const MOBILE_CAMERA_POSITION = (() => {
+     // Направление взгляда камеры: -Z, повёрнутый её собственными углами
+     const forward = new THREE.Vector3(0, 0, -1).applyEuler(
+          new THREE.Euler(...CAMERA_ROTATION)
+     );
+     return new THREE.Vector3(...CAMERA_POSITION)
+          .addScaledVector(forward, -MOBILE_CAMERA_BACK_OFFSET)
+          .toArray();
+})();
+
+const TEXT_GROUP_POSITION = [6, 5, 12];
+const TEXT_GROUP_ROTATION = [-0.1, 4.9, 0];
+
+// -----------------------------------------------------------------------------
+// МОБИЛЬНЫЙ ТЕКСТ
+// Мировая позиция текста [6, 5, 12] рассчитана на широкий кадр: в базисе камеры
+// это 15.3 единицы вправо при полукадре 23.8 (fov 50, 16:9). В портрете полукадр
+// сжимается до ~11.8 — блок целиком уезжает за правый край. Сдвигать его по
+// мировым осям бесполезно: у камеры roll -40°, поэтому мировое «вверх» на экране
+// идёт по диагонали.
+//
+// Поэтому на мобильном текст перестаёт быть частью мировой сцены и вешается
+// НА КАМЕРУ (children у drei PerspectiveCamera попадают в объект камеры).
+// Локальные оси камеры — это оси экрана: X вправо, Y вверх, -Z вперёд. Позиция
+// задаётся в долях кадра и не зависит ни от углов камеры, ни от разрешения.
+// -----------------------------------------------------------------------------
+
+// Дистанция от камеры. На видимый размер НЕ влияет: кадр расширяется
+// пропорционально дистанции, а масштаб ниже считается от этого же кадра.
+// Важно одно — текст должен быть перед сценой (грузовик примерно на 37).
+const MOBILE_TEXT_DISTANCE = 14;
+
+// Центр блока в долях ПОЛУкадра (0 — центр экрана, 1 — край).
+// Свободная полоса в портрете — между логотипом сверху (его низ около 0.69)
+// и кабиной грузовика снизу (её верх около 0.20). Ставим блок в середину.
+const MOBILE_TEXT_ANCHOR_X = 0;
+const MOBILE_TEXT_ANCHOR_Y = -0.7;
+
+// Границы блока в долях ПОЛНОГО кадра. Высота 0.22 как раз укладывается в полосу
+// между логотипом и грузовиком: 0.42 ± 0.22 = от 0.20 до 0.64 полукадра.
+const MOBILE_TEXT_WIDTH_RATIO = 0.9;
+const MOBILE_TEXT_HEIGHT_RATIO = 0.22;
+
+// Конверт-ссылка (mailto). На мобильном это тач-таргет: делаем крупнее и
+// отодвигаем от текста, чтобы палец не попадал по надписи
+const LETTER_POSITION = [-6, 0.0, 6];
+const LETTER_POSITION_MOBILE = [-5.2, 0.0, 7.4];
+const LETTER_SCALE = 8;
+const LETTER_SCALE_MOBILE = 9.5;
 
 
 
 
 
 
-export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
+export function CameraParallax({ intensity = 0.5, factor = 0.05, enabled = true }) {
      // Хранилище для исходной позиции камеры
      const initialPosition = useRef(null);
 
      useFrame((state) => {
+          // На тач-устройствах pointer «залипает» в последней точке касания и
+          // камера уезжает в сторону без возврата. Параллакс от мыши там не нужен.
+          if (!enabled) return;
           const { camera, pointer } = state;
 
           // Запоминаем начальные координаты камеры при первом кадре
@@ -114,7 +180,7 @@ function Model() {
      return <primitive object={scene} scale={15} position={[0, 2.9, 0]} rotation={[0, 1, 0]} />;
 }
 
-function ModelLetter() {
+function ModelLetter({ isMobile = false, isTouch = false }) {
      // Шлях вказується від папки public
      const { scene } = useGLTF('model/letter.glb');
      // Стан для відстеження наведення
@@ -135,6 +201,10 @@ function ModelLetter() {
      const handlePointerOut = useCallback(() => setHovered(false), []);
      // Ефект для зміни курсора миші
      useEffect(() => {
+          // На тач-екрані курсора немає: підміна нічого не дає, але залишає
+          // «залиплий» hover після тапу. Тому змінюємо курсор лише для мишки.
+          if (isTouch) return;
+
           // Якщо навели — ставимо кастомний курсор, якщо прибрали — стандартний
           document.body.style.cursor = hovered ? "url('/cursor-mini.png'), auto" : "auto";
 
@@ -142,13 +212,13 @@ function ModelLetter() {
           return () => {
                document.body.style.cursor = "auto";
           };
-     }, [hovered]);
+     }, [hovered, isTouch]);
 
      return (
           <primitive
                object={scene}
-               scale={8}
-               position={[-6, 0.0, 6]}
+               scale={isMobile ? LETTER_SCALE_MOBILE : LETTER_SCALE}
+               position={isMobile ? LETTER_POSITION_MOBILE : LETTER_POSITION}
                rotation={[0, 1, 0]}
                // Події миші
                onPointerOver={handlePointerOver}
@@ -159,8 +229,33 @@ function ModelLetter() {
 }
 
 
+function MobileContactText() {
+     const { size } = useThree();
+     
+     // Высота видимой области на дистанции D: 2 * D * tan(fov / 2)
+     const fovRad = THREE.MathUtils.degToRad(MOBILE_CAMERA_FOV);
+     const height = 2 * MOBILE_TEXT_DISTANCE * Math.tan(fovRad / 2);
+     
+     // Ширина выводится через aspect ratio
+     const aspect = size.width / size.height;
+     const width = height * aspect;
+
+     const x = (width / 2) * MOBILE_TEXT_ANCHOR_X;
+     const y = (height / 2) * MOBILE_TEXT_ANCHOR_Y;
+
+     return (
+          <group position={[x, y, -MOBILE_TEXT_DISTANCE]}>
+               <ContactText isMobile={true} />
+          </group>
+     );
+}
+
 const ContactScene = () => {
      const materialRef = useRef();
+
+     // Раскладка перестраивается на смене брейкпоинта, а не на каждый пиксель ресайза
+     const isMobile = useIsMobile();
+     const isTouch = useIsTouch();
 
      // Vertex Shader
      const vertexShader = `
@@ -318,10 +413,15 @@ const ContactScene = () => {
 
      return (
           <>
-               <CameraParallax intensity={1} factor={0.05} />
-               <group position={[6, 5, 12]} rotation={[-0.1, 4.9, 0]}>
-                    <ContactText />
-               </group>
+               <CameraParallax intensity={1} factor={0.05} enabled={!isTouch} />
+               {!isMobile && (
+                    <group
+                         position={TEXT_GROUP_POSITION}
+                         rotation={TEXT_GROUP_ROTATION}
+                    >
+                         <ContactText isMobile={false} />
+                    </group>
+               )}
                {/*<CameraLogger />*/}
                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]}>
                     <planeGeometry args={[60, 60, 64, 64]} />
@@ -337,13 +437,15 @@ const ContactScene = () => {
                     <SmartRectLight />
                </mesh>
                <ModelTruck />
-               <ModelLetter
-               />
+               <ModelLetter isMobile={isMobile} isTouch={isTouch} />
                <PerspectiveCamera
                     makeDefault
-                    position={CAMERA_POSITION}
+                    fov={isMobile ? MOBILE_CAMERA_FOV : CAMERA_FOV}
+                    position={isMobile ? MOBILE_CAMERA_POSITION : CAMERA_POSITION}
                     rotation={CAMERA_ROTATION}
-               />
+               >
+                    {isMobile && <MobileContactText />}
+               </PerspectiveCamera>
           </>
 
      );
