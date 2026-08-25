@@ -1,62 +1,63 @@
-import React, {useRef, useMemo, useState, useEffect} from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import FlagText from "./text.jsx";
 import Formwork from "./Formwork.jsx";
-import {Model} from "./levels.jsx";
-import RainbowLaser, {ConeLaser} from "./Laser.jsx";
-import SplineEditor from "../../CameraController.jsx";
-import {ScrollCameraPath} from "../../ViewportCanvas.jsx";
-import {PortalToSceneTwo} from "../Scene2/index.jsx";
+import { Model } from "./levels.jsx";
+import { ConeLaser } from "./Laser.jsx";
 import PortalText from "./PortalText.jsx";
+import { ScrollCameraPath } from "../../ViewportCanvas.jsx";
+// OPT: убраны неиспользуемые импорты RainbowLaser, SplineEditor и
+// PortalToSceneTwo. Последний создавал циклическую зависимость
+// Scene1 -> Scene2 -> Scene1 (Scene2 импортирует ExpoScene).
 
 
 export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
-     // Хранилище для исходной позиции камеры
-     const initialPosition = useRef(null);
+  // Хранилище для исходной позиции камеры
+  const initialPosition = useRef(null);
 
-     useFrame((state) => {
-          const { camera, pointer } = state;
+  useFrame((state) => {
+    const { camera, pointer } = state;
 
-          // Запоминаем начальные координаты камеры при первом кадре
-          if (!initialPosition.current) {
-               initialPosition.current = camera.position.clone();
-          }
+    // Запоминаем начальные координаты камеры при первом кадре
+    if (!initialPosition.current) {
+      initialPosition.current = camera.position.clone();
+    }
 
-          // Рассчитываем целевую позицию: Исходная координата + Смещение от мыши
-          const targetX = initialPosition.current.x + pointer.x * intensity;
-          const targetY = initialPosition.current.y + pointer.y * intensity;
+    // Рассчитываем целевую позицию: Исходная координата + Смещение от мыши
+    const targetX = initialPosition.current.x + pointer.x * intensity;
+    const targetY = initialPosition.current.y + pointer.y * intensity;
 
-          // Плавное перемещение (lerp) к новой позиции
-          camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, factor);
-          camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, factor);
-     });
+    // Плавное перемещение (lerp) к новой позиции
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, factor);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, factor);
+  });
 
-     return null;
+  return null;
 }
 
-function SmartRectLight() {
-     const lightRef = useRef();
-     return (
-          <rectAreaLight
-               ref={lightRef}
-               intensity={10}
-               width={10}
-               height={7}
-               color={'white'}
-               position={[-12, 10, 10]}
-          />
-     );
-}
+// OPT: убран неиспользуемый lightRef + memo, чтобы свет не пересоздавался
+// при ре-рендерах родителя. Параметры света не изменились.
+const SmartRectLight = React.memo(function SmartRectLight() {
+  return (
+    <rectAreaLight
+      intensity={10}
+      width={10}
+      height={7}
+      color={'white'}
+      position={[-12, 10, 10]}
+    />
+  );
+});
 
+// -----------------------------------------------------------------------------
+// OPT: исходники шейдеров поднялись на уровень модуля.
+// Раньше это были два новых строковых литерала на каждом рендере ExpoScene.
+// Текст шейдеров идентичен прежнему.
+// -----------------------------------------------------------------------------
 
-const ExpoScene = () => {
-  const materialRef = useRef();
-     const controlsRef = React.useRef();
-
-
-  // Vertex Shader
-  const vertexShader = `
+// Vertex Shader
+const vertexShader = `
     varying vec2 vUv;
     varying vec3 vWorldPosition;
 
@@ -107,8 +108,8 @@ const ExpoScene = () => {
     }
   `;
 
-  // Fragment Shader
-  const fragmentShader = `
+// Fragment Shader
+const fragmentShader = `
     uniform float uTime;
     uniform vec3 uBgColor;
     uniform vec3 uSmokeColor;
@@ -178,6 +179,37 @@ const ExpoScene = () => {
     }
   `;
 
+// -----------------------------------------------------------------------------
+// OPT: args и трансформы, которые раньше были инлайн-массивами.
+// Каждый рендер создавал новые массивы -> R3F пересобирал planeGeometry
+// и заново применял position/rotation. Значения не изменены.
+// -----------------------------------------------------------------------------
+const PLANE_ARGS = [60, 60, 64, 64];
+const PLANE_ROTATION = [-Math.PI / 2, 0, 0];
+const PLANE_POSITION = [14, 0, 0];
+
+const LASER_POSITION = [-3, 4.6, 6.2];
+const LASER_ROTATION = [40, 100, Math.PI / 1.67];
+
+const FLAG_GROUP_POSITION = [-6, 5, 16];
+const FLAG_GROUP_ROTATION = [-0.1, 0, 0];
+
+const MODEL_ROTATION = [-Math.PI / -2.0, 0, 0];
+const MODEL_POSITION = [-12, 10, 3.8];
+
+const FORMWORK_ROTATION = [-Math.PI / -2.0, 1, 0];
+const FORMWORK_POSITION = [3, 3, 0.8];
+
+const PORTAL_POSITION = [-10.1, 9.4, 6.0];
+const PORTAL_ROTATION = [Math.PI / 2, -Math.PI / 1.5, 0];
+
+
+const ExpoScene = () => {
+  const materialRef = useRef();
+  // OPT: кешируем сам uniform, чтобы не ходить по цепочке
+  // material.uniforms.uTime каждый кадр.
+  const uTimeRef = useRef(null);
+
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
@@ -197,33 +229,38 @@ const ExpoScene = () => {
     []
   );
 
-
-
-     useFrame((state, delta) => {
-    if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value += delta;
+  useFrame((state, delta) => {
+    if (uTimeRef.current === null && materialRef.current) {
+      uTimeRef.current = materialRef.current.uniforms.uTime;
     }
-
+    if (uTimeRef.current) {
+      uTimeRef.current.value += delta;
+    }
   });
-     const [activeScrollCamera, setActiveScrollCamera] = useState(false);
-     const [isLaserOn, setIsLaserOn] = useState(false);
-     const [portalTExt, setPortalTExt] = useState(false);
 
-     useEffect(() => {
-          setTimeout(() => {
-               setIsLaserOn(true)
-          },3000)
-     })
+  const [activeScrollCamera, setActiveScrollCamera] = useState(false);
+  const [isLaserOn, setIsLaserOn] = useState(false);
+  const [portalTExt, setPortalTExt] = useState(false);
+
+  // OPT: раньше не было массива зависимостей — эффект перезапускался
+  // после КАЖДОГО рендера и плодил setTimeout без отмены.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setIsLaserOn(true);
+    }, 3000);
+
+    return () => clearTimeout(id);
+  }, []);
 
   return (
     <group visible={true}>
 
-         <CameraParallax intensity={1} factor={0.05} />
-      <group position={[-6, 5, 16]} rotation={[-0.1, 0, 0]}>
+      <CameraParallax intensity={1} factor={0.05} />
+      <group position={FLAG_GROUP_POSITION} rotation={FLAG_GROUP_ROTATION}>
         <FlagText active={setActiveScrollCamera} />
       </group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]} >
-        <planeGeometry args={[60, 60, 64, 64]} />
+      <mesh rotation={PLANE_ROTATION} position={PLANE_POSITION} >
+        <planeGeometry args={PLANE_ARGS} />
         <shaderMaterial
           ref={materialRef}
           vertexShader={vertexShader}
@@ -233,25 +270,25 @@ const ExpoScene = () => {
           depthWrite={false}
           side={THREE.DoubleSide}
         />
-           <SmartRectLight/>
-           <ConeLaser
-                active={isLaserOn}
-                radius={0.3}
-                height={21.0}
-                thetaLength={6.6}
-                emissiveIntensity={3.5}
-                speed={1.5}
-                position={[-3, 4.6, 6.2]}
-                rotation={[40, 100, Math.PI / 1.67]}
-           />
-           <Model rotation={[-Math.PI / -2.0, 0, 0]} scale={7} position={[-12, 10, 3.8]} inputRotationZ={-65}/>
-           <Formwork rotation={[-Math.PI / -2.0, 1, 0]} scale={0.0041} position={[3, 3, 0.8]}/>
-           <group position={[-10.1, 9.4, 6.0]}     rotation={[Math.PI / 2, -Math.PI / 1.5, 0]}
-                  anchorX="center"
-                  anchorY="middle">
-                <PortalText />
-           </group>
-           {activeScrollCamera &&   <ScrollCameraPath portal={setPortalTExt} />}
+        <SmartRectLight />
+        <ConeLaser
+          active={isLaserOn}
+          radius={0.3}
+          height={21.0}
+          thetaLength={6.6}
+          emissiveIntensity={3.5}
+          speed={1.5}
+          position={LASER_POSITION}
+          rotation={LASER_ROTATION}
+        />
+        <Model rotation={MODEL_ROTATION} scale={7} position={MODEL_POSITION} inputRotationZ={-65} />
+        <Formwork rotation={FORMWORK_ROTATION} scale={0.0041} position={FORMWORK_POSITION} />
+        <group position={PORTAL_POSITION} rotation={PORTAL_ROTATION}
+          anchorX="center"
+          anchorY="middle">
+          <PortalText />
+        </group>
+        {activeScrollCamera && <ScrollCameraPath portal={setPortalTExt} />}
       </mesh>
     </group>
   );

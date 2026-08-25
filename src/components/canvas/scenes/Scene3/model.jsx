@@ -20,7 +20,7 @@ export function ModelFort({ scroll, helm,portal,destroy, ...props }) {
      const hasScrolled = useRef(false);
 
      const delayAnim1 = 4.8;             // ЗАДЕРЖКА для 1-й анимации (в секундах)
-     const durationAnim1 = 3.5;
+     const durationAnim1 = 3.1;
      const timerRef = useRef(0);         // Загальний таймер сцени
      const opsSpeed = 0.008;             // Швидкість зміни alphaTest
 
@@ -63,72 +63,65 @@ export function ModelFort({ scroll, helm,portal,destroy, ...props }) {
      // }, [scroll]);
 
      // 3. Головний цикл анімації
-     useFrame((state, delta) => {
-          timerRef.current += delta;
+     const sceneStartTimeRef = useRef(null);
 
-          // --- АНИМАЦИЯ №1: Срабатывает ПОСЛЕ задержки и длится durationAnim1 секунд ---
-          if (timerRef.current >= delayAnim1 && timerRef.current < (delayAnim1 + durationAnim1)) {
+     useFrame((state, delta) => {
+          // 1. Фиксируем время, когда сцена РЕАЛЬНО началась для этой модели
+          if (sceneStartTimeRef.current === null) {
+               sceneStartTimeRef.current = state.clock.getElapsedTime();
+          }
+
+          // 2. Вычисляем «чистое» время жизни этой сцены (начиная с 0)
+          const elapsedTime = state.clock.getElapsedTime() - sceneStartTimeRef.current;
+
+          // --- АНИМАЦИЯ №1: Срабатывает ПОСЛЕ задержки ---
+          if (elapsedTime >= delayAnim1 && elapsedTime < (delayAnim1 + durationAnim1)) {
                const mat = customMaterialRef.current;
+
                if (!hasScrolled.current) {
-                    // Запоминаем точное время, когда запустилась эта фаза
-                    hasScrolled.current = timerRef.current;
+                    // Запоминаем время старта фазы
+                    hasScrolled.current = elapsedTime;
                }
 
-               // Вместо setTimeout(..., 1500) -> проверяем, прошло ли 1.5 секунды с момента фиксации
                if (hasScrolled.current && typeof hasScrolled.current === 'number') {
-                    const timePassedSinceStart = timerRef.current - hasScrolled.current;
+                    const timePassedSinceStart = elapsedTime - hasScrolled.current;
 
-                    // Прошло 1.5 секунды -> включаем текст и портал
+                    // Прошло 1.5 секунды -> включаем текст, портал и helm
                     if (timePassedSinceStart >= 1.5) {
                          scroll(true);
                          portal(true);
-                         setTimeout(() => {
-                              helm(true);
-                         },100)
+                         helm(true);
 
-
-                         // Чтобы этот блок сработал один раз, превращаем стейт в true флаг
                          hasScrolled.current = true;
                     }
                }
-               // if (hasScrolled.current === true && !helmTriggeredRef.current) {
-               //      // Инициализируйте useRef(false) для helmTriggeredRef вверху компонента
-               //
-               //      helmTriggeredRef.current = true;
-               // }
 
                if (mat && mat.alphaTest > 0) {
-                    mat.alphaTest = Math.max(0, mat.alphaTest - opsSpeed);
+                    // Возвращаем вашу исходную пошаговую скорость, но страхуем от лагов вкладок
+                    // Ограничиваем максимальный delta, чтобы при выходе из вкладки объект не исчезал мгновенно
+                    const safeDelta = Math.min(delta, 0.1);
+                    mat.alphaTest = Math.max(0, mat.alphaTest - (opsSpeed * (safeDelta / 0.016)));
                     mat.needsUpdate = true;
                }
           }
 
-               // До наступления задержки (пока timerRef.current < delayAnim1) — ничего не происходит, модель ждет.
-
-          // --- АНИМАЦИЯ №2: Переходит в фазу падения строго после окончания Анимации №1 ---
-          else if (timerRef.current >= (delayAnim1 + durationAnim1)) {
-               fallTimerRef.current += delta;
-               const totalFallTime = fallTimerRef.current;
+          // --- АНИМАЦИЯ №2: Фаза падения ---
+          else if (elapsedTime >= (delayAnim1 + durationAnim1)) {
+               // Вычисляем, сколько времени прошло с момента старта ВТОРОЙ анимации
+               const totalFallTime = elapsedTime - (delayAnim1 + durationAnim1);
 
                if (groupRef.current) {
-                    // Рассчитываем относительный уровень пола для локальных координат группы
                     const groupWorldPos = new THREE.Vector3();
                     groupRef.current.getWorldPosition(groupWorldPos);
                     const localFloorY = floorY - groupWorldPos.y;
 
                     groupRef.current.children.forEach((mesh) => {
                          if (mesh.originalPosition) {
-                              // Вычисляем время падения именно для этого кусочка с учетом его задержки
                               const t = Math.max(0, totalFallTime - mesh.fallDelay);
 
                               if (t > 0) {
-                                   // if (destroy) {
-                                        // Считаем падение вниз по формуле: y = y0 - 0.5 * g * t^2
-                                        const currentY = mesh.originalPosition.y - (0.5 * (gravity / 15) * t * t);
-                                        //
-                                        // // Ограничиваем падение уровнем пола
-                                        mesh.position.y = Math.max(localFloorY, currentY);
-                                   // }
+                                   const currentY = mesh.originalPosition.y - (0.5 * (gravity / 15) * t * t);
+                                   mesh.position.y = Math.max(localFloorY, currentY);
                               }
                          }
                     });

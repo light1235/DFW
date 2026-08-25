@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useRef, useEffect, useState, useCallback, memo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrthographicCamera } from '@react-three/drei';
@@ -271,45 +271,134 @@ function createStretchedTextTexture(text, fontFamily = 'Space Grotesk, Impact, A
 }
 
 // =========================================================
-// 4. THREE.JS 3D КОМПОНЕНТЫ
+// 3.5 ОБЩИЕ РЕСУРСЫ (OPT)
 // =========================================================
-function ImageCard({ item, index, width, height, xPos, config, colorLight, colorDark, onSelect }) {
-     const [hovered, setHovered] = useState(false);
-     const [texture, setTexture] = useState(null);
+// Сцена разворачивает 4 полосы × 6 картинок × 3 повтора = 72 карточки.
+// Всё, что у них одинаковое, теперь создаётся один раз на весь модуль.
 
-     useEffect(() => {
-          let isMounted = true;
-          const loader = new THREE.TextureLoader();
+// Единое время для всех шейдеров. Раньше каждая из 76 карточек и полос текста
+// сама вызывала state.clock.getElapsedTime() и писала результат в свой uniform
+// каждый кадр. Теперь значение обновляется один раз в PosterContent, а все
+// материалы ссылаются на ЭТОТ ЖЕ объект uniform — в three.js uniforms это
+// обычный объект, и несколько материалов могут держать одну ссылку.
+const SHARED_TIME = { value: 0 };
 
-          loader.load(
-               item.url,
+// Один чёрный материал подложки вместо 72 + 24 одинаковых.
+const BLACK_MATERIAL = new THREE.MeshBasicMaterial({ color: '#000000' });
+
+// Смещение подложки — вынесено, чтобы не плодить литерал массива на рендер.
+const BG_OFFSET = [0, 0, -0.01];
+
+// -----------------------------------------------------------------------------
+// OPT: общий кэш текстур. Раньше каждая карточка создавала свой
+// new THREE.TextureLoader() и свой THREE.Texture. Так как список повторяется
+// три раза (repeatedItems), а часть файлов встречается в разных полосах,
+// уникальных изображений всего 16 — но в GPU-память загружалось 72 отдельных
+// текстуры, то есть одна и та же картинка декодировалась и заливалась до 6 раз.
+// Теперь на url приходится ровно одна текстура. Настройки фильтрации и
+// colorSpace те же, что были, — картинка не меняется.
+//
+// Кэш живёт на уровне модуля и владеет текстурами, поэтому карточки их НЕ
+// освобождают: одна размонтированная карточка не должна ломать остальные,
+// которые используют ту же текстуру.
+// -----------------------------------------------------------------------------
+const _sharedLoader = new THREE.TextureLoader();
+const _textureCache = new Map(); // url -> THREE.Texture | Promise<THREE.Texture>
+
+// Заглушка при ошибке загрузки. Обратите внимание: generateProceduralPortrait
+// не использует аргумент index внутри (рисует один и тот же силуэт), поэтому
+// результат для всех карточек идентичен и достаточно одного экземпляра.
+let _fallbackTexture = null;
+function getFallbackTexture() {
+     if (!_fallbackTexture) _fallbackTexture = generateProceduralPortrait();
+     return _fallbackTexture;
+}
+
+function getCachedTexture(url) {
+     const entry = _textureCache.get(url);
+     return entry instanceof THREE.Texture ? entry : null;
+}
+
+function loadSharedTexture(url) {
+     const entry = _textureCache.get(url);
+     if (entry) return entry instanceof THREE.Texture ? Promise.resolve(entry) : entry;
+
+     const promise = new Promise((resolve) => {
+          _sharedLoader.load(
+               url,
                (loadedTex) => {
-                    if (isMounted) {
-                         loadedTex.colorSpace = THREE.SRGBColorSpace;
-                         loadedTex.minFilter = THREE.LinearFilter;
-                         loadedTex.magFilter = THREE.LinearFilter;
-                         setTexture(loadedTex);
-                    }
+                    loadedTex.colorSpace = THREE.SRGBColorSpace;
+                    loadedTex.minFilter = THREE.LinearFilter;
+                    loadedTex.magFilter = THREE.LinearFilter;
+                    _textureCache.set(url, loadedTex);
+                    resolve(loadedTex);
                },
                undefined,
                () => {
-                    if (isMounted) {
-                         setTexture(generateProceduralPortrait(index));
-                    }
+                    const fallback = getFallbackTexture();
+                    _textureCache.set(url, fallback);
+                    resolve(fallback);
                }
           );
+     });
+
+     _textureCache.set(url, promise);
+     return promise;
+}
+
+// =========================================================
+// 4. THREE.JS 3D КОМПОНЕНТЫ
+// =========================================================
+// OPT: memo — при перерисовке родителя (например, при открытии поп-апа) React
+// больше не проходит по всем 72 карточкам заново. Пропсы для этого приведены к
+// стабильным ссылкам: config, onSelect и геометрии мемоизированы выше.
+const ImageCard = memo(function ImageCard({
+     item,
+     width,
+     height,
+     xPos,
+     config,
+     colorLight,
+     colorDark,
+     onSelect,
+     frameGeometry,
+     imageGeometry,
+}) {
+     const [hovered, setHovered] = useState(false);
+     // Если текстура уже в кэше — берём её сразу, без лишнего кадра с пустотой.
+     const [texture, setTexture] = useState(() => getCachedTexture(item.url));
+
+     useEffect(() => {
+          let isMounted = true;
+
+          const cached = getCachedTexture(item.url);
+          if (cached) {
+               setTexture(cached);
+               return;
+          }
+
+          loadSharedTexture(item.url).then((tex) => {
+               if (isMounted) setTexture(tex);
+          });
 
           return () => { isMounted = false; };
-     }, [item.url, index]);
+     }, [item.url]);
 
      const shaderMaterial = useMemo(() => {
-          return new THREE.ShaderMaterial({
+          const material = new THREE.ShaderMaterial({
                uniforms: THREE.UniformsUtils.clone(DuotoneShader.uniforms),
                vertexShader: DuotoneShader.vertexShader,
                fragmentShader: DuotoneShader.fragmentShader,
                side: THREE.DoubleSide,
           });
+          // OPT: подменяем персональный uniform времени на общий (см. SHARED_TIME).
+          material.uniforms.uTime = SHARED_TIME;
+          return material;
      }, []);
+
+     // OPT: 72 материала никогда не освобождались — при размонтировании сцены
+     // их программы и uniform-буферы оставались в GPU.
+     useEffect(() => () => shaderMaterial.dispose(), [shaderMaterial]);
 
      useEffect(() => {
           if (shaderMaterial) {
@@ -324,27 +413,29 @@ function ImageCard({ item, index, width, height, xPos, config, colorLight, color
           }
      }, [shaderMaterial, config, colorLight, colorDark, texture]);
 
-     useFrame((state) => {
-          if (shaderMaterial) {
-               shaderMaterial.uniforms.uTime.value = state.clock.getElapsedTime();
-               shaderMaterial.uniforms.uHover.value = THREE.MathUtils.lerp(
-                    shaderMaterial.uniforms.uHover.value,
-                    hovered ? 1.0 : 0.0,
-                    0.15
-               );
-          }
-     });
+     useFrame(() => {
+          const hover = shaderMaterial.uniforms.uHover;
 
-     const borderWidth = width * 0.02;
+          // OPT: раньше здесь на каждом кадре для КАЖДОЙ из 72 карточек шёл
+          // вызов getElapsedTime() и lerp, хотя наведена максимум одна карточка,
+          // а у остальных uHover давно равен нулю. Время теперь общее, а lerp
+          // выполняется только пока значение реально меняется.
+          if (!hovered && hover.value <= 0.001) {
+               // Дотягиваем до ровного нуля: 0.001 * 0.15 в шейдере даёт прибавку
+               // около 0.0001 — это меньше 1/255, то есть ниже различимого шага цвета.
+               if (hover.value !== 0) hover.value = 0;
+               return;
+          }
+
+          hover.value = THREE.MathUtils.lerp(hover.value, hovered ? 1.0 : 0.0, 0.15);
+     });
 
      return (
           <group position={[xPos, 0, 0]}>
-               <mesh position={[0, 0, -0.01]}>
-                    <planeGeometry args={[width, height]} />
-                    <meshBasicMaterial color="#000000" />
-               </mesh>
+               <mesh position={BG_OFFSET} geometry={frameGeometry} material={BLACK_MATERIAL} />
                <mesh
-                    position={[0, 0, 0]}
+                    geometry={imageGeometry}
+                    material={shaderMaterial}
                     onPointerOver={(e) => {
                          e.stopPropagation();
                          setHovered(true);
@@ -358,13 +449,10 @@ function ImageCard({ item, index, width, height, xPos, config, colorLight, color
                          e.stopPropagation();
                          onSelect(item, colorLight);
                     }}
-               >
-                    <planeGeometry args={[width - borderWidth * 2, height - borderWidth * 2]} />
-                    <primitive object={shaderMaterial} attach="material" />
-               </mesh>
+               />
           </group>
      );
-}
+});
 
 function ImageGridLine({ items, rowY, rowHeight, lineOffsetRef, direction, config, gridIndex, onSelect }) {
      const { viewport } = useThree();
@@ -379,6 +467,31 @@ function ImageGridLine({ items, rowY, rowHeight, lineOffsetRef, direction, confi
 
      const singleSetWidth = items.length * cardWidth;
      const totalRowWidth = repeatedItems.length * cardWidth;
+
+     // -------------------------------------------------------------------------
+     // OPT: две геометрии на всю полосу вместо двух на каждую карточку.
+     // Размеры у всех карточек полосы совпадают (cardWidth × rowHeight), а
+     // borderWidth считался как width * 0.02 — то есть создавалось 18 пар
+     // идентичных PlaneGeometry на полосу (144 на сцену) с отдельными буферами
+     // в GPU. Значения размеров ровно те же, что и были.
+     // -------------------------------------------------------------------------
+     const { frameGeometry, imageGeometry } = useMemo(() => {
+          const borderWidth = cardWidth * 0.02;
+          return {
+               frameGeometry: new THREE.PlaneGeometry(cardWidth, rowHeight),
+               imageGeometry: new THREE.PlaneGeometry(
+                    cardWidth - borderWidth * 2,
+                    rowHeight - borderWidth * 2
+               ),
+          };
+     }, [cardWidth, rowHeight]);
+
+     // Геометрии пересоздаются при ресайзе (меняется viewport.width) — старые
+     // нужно освобождать, иначе буферы копятся в GPU-памяти.
+     useEffect(() => () => {
+          frameGeometry.dispose();
+          imageGeometry.dispose();
+     }, [frameGeometry, imageGeometry]);
 
      useFrame(() => {
           if (groupRef.current && lineOffsetRef.current !== undefined) {
@@ -398,7 +511,6 @@ function ImageGridLine({ items, rowY, rowHeight, lineOffsetRef, direction, confi
                          <ImageCard
                               key={`${item.id}-${idx}`}
                               item={item}
-                              index={idx}
                               width={cardWidth}
                               height={rowHeight}
                               xPos={xPos}
@@ -406,12 +518,18 @@ function ImageGridLine({ items, rowY, rowHeight, lineOffsetRef, direction, confi
                               colorLight={rowColorLight}
                               colorDark={rowColorDark}
                               onSelect={onSelect}
+                              frameGeometry={frameGeometry}
+                              imageGeometry={imageGeometry}
                          />
                     );
                })}
           </group>
      );
 }
+
+// OPT: список повторов вынесен из компонента — раньше литерал массива
+// создавался заново на каждом рендере полосы.
+const TEXT_REPEATS = [-2, -1, 0, 1, 2, 3];
 
 function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
      const { viewport } = useThree();
@@ -425,7 +543,7 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
      const planeWidth = viewport.width * aspectRatio;
 
      const shaderMaterial = useMemo(() => {
-          return new THREE.ShaderMaterial({
+          const material = new THREE.ShaderMaterial({
                uniforms: THREE.UniformsUtils.clone(TextGrungeShader.uniforms),
                vertexShader: TextGrungeShader.vertexShader,
                fragmentShader: TextGrungeShader.fragmentShader,
@@ -433,7 +551,23 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
                depthWrite: false,
                side: THREE.DoubleSide,
           });
+          // OPT: общий uniform времени вместо персонального (см. SHARED_TIME).
+          material.uniforms.uTime = SHARED_TIME;
+          return material;
      }, []);
+
+     // OPT: одна геометрия на все 12 мешей полосы. Раньше каждый из 6 повторов
+     // объявлял два <planeGeometry args={[planeWidth, rowHeight]} /> — аргументы
+     // у подложки и у текста идентичны, так что создавалось 12 копий одной и той
+     // же плоскости на полосу (48 на сцену).
+     const geometry = useMemo(
+          () => new THREE.PlaneGeometry(planeWidth, rowHeight),
+          [planeWidth, rowHeight]
+     );
+
+     // Пересоздаётся при ресайзе — старую освобождаем.
+     useEffect(() => () => geometry.dispose(), [geometry]);
+     useEffect(() => () => shaderMaterial.dispose(), [shaderMaterial]);
 
      useEffect(() => {
           if (shaderMaterial) {
@@ -442,10 +576,9 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
           }
      }, [shaderMaterial, texture, config.grungeIntensity]);
 
-     useFrame((state) => {
-          if (shaderMaterial) {
-               shaderMaterial.uniforms.uTime.value = state.clock.getElapsedTime();
-          }
+     useFrame(() => {
+          // uTime больше не пишется здесь — он общий и обновляется один раз за
+          // кадр в PosterContent.
           if (groupRef.current && lineOffsetRef.current !== undefined) {
                const currentOffset = lineOffsetRef.current;
                // Направление движения: 'left' -> влево (-), 'right' -> вправо (+)
@@ -457,16 +590,10 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
 
      return (
           <group ref={groupRef} position={[0, rowY, 0]}>
-               {[-2, -1, 0, 1, 2, 3].map((repeatIndex) => (
+               {TEXT_REPEATS.map((repeatIndex) => (
                     <group key={repeatIndex} position={[repeatIndex * planeWidth, 0, 0]}>
-                         <mesh position={[0, 0, -0.01]}>
-                              <planeGeometry args={[planeWidth, rowHeight]} />
-                              <meshBasicMaterial color="#000000" />
-                         </mesh>
-                         <mesh position={[0, 0, 0]}>
-                              <planeGeometry args={[planeWidth, rowHeight]} />
-                              <primitive object={shaderMaterial} attach="material" />
-                         </mesh>
+                         <mesh position={BG_OFFSET} geometry={geometry} material={BLACK_MATERIAL} />
+                         <mesh geometry={geometry} material={shaderMaterial} />
                     </group>
                ))}
           </group>
@@ -476,7 +603,7 @@ function TextLine({ text, rowY, rowHeight, lineOffsetRef, direction, config }) {
 // =========================================================
 // 5. РАЗНОНАПРАВЛЕННЫЙ СКРОЛЛ (ПОДДЕРЖКА WHEEL + SCROLL)
 // =========================================================
-function PosterContent({ config, onSelect , contact, town }) {
+function PosterContent({ config, onSelect, contact, town }) {
      const { viewport } = useThree();
 
      const lineOffsetRef = useRef(0);
@@ -499,7 +626,7 @@ function PosterContent({ config, onSelect , contact, town }) {
                setTimeout(() => {
                     contact(true)
                     town(false)
-               },1200)
+               }, 1200)
           };
 
           // Слушаем тач-события для мобильных устройств
@@ -528,6 +655,12 @@ function PosterContent({ config, onSelect , contact, town }) {
      }, [config.scrollSensitivity]);
 
      useFrame((state, delta) => {
+          // OPT: единственная точка, где время читается из часов. Значение
+          // разъезжается по всем шейдерам через общий uniform SHARED_TIME —
+          // раньше getElapsedTime() вызывался 76 раз за кадр (по разу на каждую
+          // карточку и полосу текста).
+          SHARED_TIME.value = state.clock.getElapsedTime();
+
           // Авто-движение
           if (config.autoScroll) {
                targetOffsetRef.current += delta * 60.0 * config.autoScrollSpeed;
@@ -546,7 +679,10 @@ function PosterContent({ config, onSelect , contact, town }) {
      const startY = viewport.height / 2 - rowHeight / 2;
 
      // Чередование направлений: 'left' <-> 'right'
-     const lineConfigs = [
+     // OPT: мемоизация. Массив пересобирался на каждом рендере, а вместе с ним
+     // менялась ссылка на items — из-за этого useMemo(repeatedItems) в полосах
+     // сбрасывался и пересоздавал списки карточек.
+     const lineConfigs = useMemo(() => [
           { type: 'text', direction: 'left', content: config.lines.text1 },
           { type: 'images', direction: 'right', items: config.imageSets[0] || [], gridIndex: 0 },
           { type: 'text', direction: 'left', content: config.lines.text2 },
@@ -555,7 +691,7 @@ function PosterContent({ config, onSelect , contact, town }) {
           { type: 'images', direction: 'right', items: config.imageSets[2] || [], gridIndex: 2 },
           { type: 'text', direction: 'left', content: config.lines.text4 },
           { type: 'images', direction: 'right', items: config.imageSets[3] || [], gridIndex: 3 },
-     ];
+     ], [config]);
 
      return (
           <group>
@@ -694,9 +830,9 @@ function ImagePopup({ selectedData, onClose }) {
                          </div>
 
                          <div>
-            <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '2px', color: color, fontWeight: 'bold' }}>
-              {item.category || 'INSPECTOR'}
-            </span>
+                              <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '2px', color: color, fontWeight: 'bold' }}>
+                                   {item.category || 'INSPECTOR'}
+                              </span>
                               <h2 style={{ fontSize: '22px', fontWeight: '900', margin: '4px 0 0 0', textTransform: 'uppercase' }}>
                                    {item.title || 'POSTER CELL'}
                               </h2>
@@ -730,12 +866,26 @@ function ImagePopup({ selectedData, onClose }) {
 // =========================================================
 // 7. ГЛАВНЫЙ ЭКСПОРТИРУЕМЫЙ КОМПОНЕНТ
 // =========================================================
-export default function InteractivePoster({ town,  contact,  customConfig = {} }) {
+// OPT: стабильная ссылка для дефолтного значения. С литералом `= {}` в
+// параметрах на каждом рендере создавался новый объект, из-за чего useMemo ниже
+// пересчитывался всегда, activeConfig приходил в дерево новой ссылкой и
+// перезапускал useEffect с uniform'ами во всех 72 карточках.
+const EMPTY_CONFIG = {};
+
+export default function InteractivePoster({ town, contact, customConfig = EMPTY_CONFIG }) {
      const [selectedData, setSelectedData] = useState(null);
 
      const activeConfig = useMemo(() => {
           return { ...CONFIG, ...customConfig };
      }, [customConfig]);
+
+     // OPT: стабильные колбэки — иначе новая функция onSelect на каждом рендере
+     // сбрасывала memo у всех карточек.
+     const handleSelect = useCallback((item, color) => {
+          setSelectedData({ item, color });
+     }, []);
+
+     const handleClose = useCallback(() => setSelectedData(null), []);
 
      return (
           <div style={{ backgroundColor: activeConfig.bgColor, color: '#ffffff', minHeight: '100vh', width: '100%' }}>
@@ -749,7 +899,7 @@ export default function InteractivePoster({ town,  contact,  customConfig = {} }
                          <OrthographicCamera makeDefault position={[0, 0, 100]} zoom={1} />
                          <PosterContent
                               config={activeConfig}
-                              onSelect={(item, color) => setSelectedData({ item, color })}
+                              onSelect={handleSelect}
                               contact={contact}
                               town={town}
                          />
@@ -784,7 +934,7 @@ export default function InteractivePoster({ town,  contact,  customConfig = {} }
                {/* ПОП-АП МОДАЛЬНОЕ ОКНО */}
                <ImagePopup
                     selectedData={selectedData}
-                    onClose={() => setSelectedData(null)}
+                    onClose={handleClose}
                />
           </div>
      );

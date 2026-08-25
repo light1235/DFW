@@ -657,7 +657,7 @@ export function OpenDoor({
                                    {
                                         x:[217,224],
                                         z:[-16.70,-18],
-                                        duration: 1500,
+                                        duration: 2000,
                                         delay:500,
                                         ease: 'inOutCubic',
                                         onBegin: () => {

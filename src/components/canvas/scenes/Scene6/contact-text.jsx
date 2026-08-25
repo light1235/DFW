@@ -1,63 +1,61 @@
-import {useEffect, useRef, useState} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Center, Text3D } from '@react-three/drei';
-import * as THREE from 'three';
 
-function AnimatedText({targetOpacity }) {
+// Налаштування тексту статичні — виносимо за межі рендеру, щоб Text3D
+// не отримував новий об'єкт властивостей на кожному рендері
+const TEXT_OPTIONS = {
+     size: 1.2, height: 0.2, curveSegments: 12, lineHeight: 0.7, letterSpacing: 0.05,
+};
+const TEXT_OPTIONS_SMALL = {
+     size: 0.35, height: 0.2, curveSegments: 12, lineHeight: 0.7, letterSpacing: 0.05,
+};
+const TEXT_OPTIONS_ARROW = {
+     font: '/font.json',
+     size: 0.2, height: 0.2,
+     curveSegments: 12,
+     bevelEnabled: true,
+     bevelThickness: 0.02,
+     bevelSize: 0.01,
+     opacity: 0,
+};
+const TEXT_OPTIONS_TRIGGER = {
+     font: '/font.json', size: 0.2, height: 0.2, curveSegments: 12, lineHeight: 0.7, letterSpacing: 0.05,
+};
+const ARROWS = ['', '>', '>>', '>>>'];
+
+function AnimatedText({ targetOpacity }) {
 
      const materialRef1 = useRef()
      const materialRef2 = useRef()
 
      useEffect(() => {
-          setTimeout(() => {
+          const timer = setTimeout(() => {
                if (materialRef1.current) materialRef1.current.opacity = targetOpacity ?? 1
                if (materialRef2.current) materialRef2.current.opacity = targetOpacity ?? 1
-          },2400)
+          }, 2400)
 
+          // Прибираємо таймер при розмонтуванні, щоб не писати в мертві рефи
+          return () => clearTimeout(timer)
      }, [targetOpacity])
 
-     const groupRef = useRef()
-     const [arrowCount, setArrowCount] = useState(0)
-     const timerRef = useRef(0)
-     useFrame((state, delta) => {
-          // const time = state.clock.getElapsedTime()
-          // if (groupRef.current) {
-          //      // groupRef.current.position.y = Math.sin(time * 1.5) * 0.05
-          // }
-          // timerRef.current += delta
-          // if (timerRef.current > 0.4) {
-          //      timerRef.current = 0
-          //      setArrowCount((prev) => (prev + 1) % 4)
-          // }
-     })
-     const textOptions = {
-          font: '/font.json',
-          size: 0.2, height: 0.2,
-          curveSegments: 12,
-          bevelEnabled: true,
-          bevelThickness: 0.02,
-          bevelSize: 0.01,
-          opacity: 0,
-     }
-     const textOptionsTrigger = {   font: '/font.json', size: 0.2, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const arrows = ['', '>', '>>', '>>>']
+     // Анімація стрілок вимкнена, тому кадровий цикл тут не потрібен
+     const [arrowCount] = useState(0)
+
      return (
           <>
-               <Text3D {...textOptionsTrigger} position={[2.7, -5.2, 0]}>
+               <Text3D {...TEXT_OPTIONS_TRIGGER} position={[2.7, -5.2, 0]}>
                     {"SCROLL TO EXPLORE THE PROCESS "}
-                    <meshStandardMaterial  ref={materialRef1} color="#ffffff"
-                                           emissive="#ffc280"  opacity={0}  emissiveIntensity={3} transparent  toneMapped={false} roughness={0.2} metalness={0.8} />
+                    <meshStandardMaterial ref={materialRef1} color="#ffffff"
+                         emissive="#ffc280" opacity={0} emissiveIntensity={3} transparent toneMapped={false} roughness={0.2} metalness={0.8} />
                </Text3D>
-               <Text3D {...textOptions} position={[9.7, -5.2, 0]}>
-                    {arrows[arrowCount]}
-                    <meshStandardMaterial  ref={materialRef2} color="#ffffff"
-                                           emissive="#ffc280"
-                                           emissiveIntensity={3} toneMapped={false}  opacity={0}  transparent  roughness={0.1} metalness={0.6} />
+               <Text3D {...TEXT_OPTIONS_ARROW} position={[9.7, -5.2, 0]}>
+                    {ARROWS[arrowCount]}
+                    <meshStandardMaterial ref={materialRef2} color="#ffffff"
+                         emissive="#ffc280"
+                         emissiveIntensity={3} toneMapped={false} opacity={0} transparent roughness={0.1} metalness={0.6} />
                </Text3D>
           </>
-
-
      )
 }
 
@@ -65,35 +63,16 @@ function AnimatedText({targetOpacity }) {
 export default function ContactText() {
 
      const groupRef = useRef()
-     const [arrowCount, setArrowCount] = useState(0)
-     const timerRef = useRef(0)
-     useFrame((state, delta) => {
-          const time = state.clock.getElapsedTime() / 2
-          // if (groupRef.current) {
-          //      // groupRef.current.position.y = Math.sin(time * 1.5) * 0.05
-          // }
-          timerRef.current += delta
-          if (timerRef.current > 0.4) {
-               timerRef.current = 0
-               setArrowCount((prev) => (prev + 1) % 4)
-          }
-     })
-     const textOptions1 = {
-          font: '/font.json',
-          size: 0.2, height: 0.2,
-          curveSegments: 12,
-          bevelEnabled: true,
-          bevelThickness: 0.02,
-          bevelSize: 0.01,
-     }
-     const arrows = ['', '>', '>>', '>>>']
 
-     // const groupRef = useRef();
+     // Один uniform-об'єкт на всі чотири матеріали: він мутується, а не пересоздається
      const uniformsRef = useRef({ uTime: { value: 0 } });
+
      useFrame((state) => {
           uniformsRef.current.uTime.value = state.clock.getElapsedTime();
      });
-     const handleBeforeCompile = (shader) => {
+
+     // Стабільна функція: інакше кожен рендер підсовував матеріалам новий onBeforeCompile
+     const handleBeforeCompile = useCallback((shader) => {
           shader.uniforms.uTime = uniformsRef.current.uTime;
           shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
           shader.vertexShader = shader.vertexShader.replace(
@@ -101,55 +80,36 @@ export default function ContactText() {
                `#include <begin_vertex>\ntransformed.z += sin(transformed.x * 0.01 + uTime
 * 2.5) * 0.25;`
           );
-     };
+     }, []);
 
-     const [activeScroll, setActiveScroll] = useState(false);
-
-     useEffect(() => {
-          setTimeout(() => {
-               setActiveScroll(true)
-          },1500)
-     })
-     // useFrame(() => {
-     //      setTimeout(() => {
-     //           setActiveScroll(true)
-     //      },1500)
-     // })
-
-     const textOptions = { size: 1.2, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const textOptionsSmall = { size: 0.35, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const textOptionsTrigger = { size: 0.2, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
      return (
-          <group ref={groupRef} position={[0,1.2,0]}>
+          <group ref={groupRef} position={[0, 1.2, 0]}>
                <Center>
-                    <Text3D font="/zb.json" {...textOptions}>
+                    <Text3D font="/zb.json" {...TEXT_OPTIONS}>
                          Contact
                          <meshStandardMaterial
-                              color="#F54927"  emissive="#ffc280" emissiveIntensity={3} toneMapped={false}  onBeforeCompile={handleBeforeCompile}
+                              color="#F54927" emissive="#ffc280" emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile}
                          />
                     </Text3D>
 
                     {/* Вторая строка — смещена вниз по оси Y */}
-                    <Text3D font="/zb.json" position={[0.6, -2.6, 0]} {...textOptions}>
+                    <Text3D font="/zb.json" position={[0.6, -2.6, 0]} {...TEXT_OPTIONS}>
                          too us.
                          <meshStandardMaterial
-                              color="#ffffff"  emissive="#ffc280" emissiveIntensity={3} toneMapped={false}  onBeforeCompile={handleBeforeCompile}
+                              color="#ffffff" emissive="#ffc280" emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile}
                          />
                     </Text3D>
                     <Text3D font="/zl.json" position={[0.8, -3.9, 0]}
-                            {...textOptionsSmall}>Josef Umdasch Platz 1 3300 Amstetten
-                         <meshStandardMaterial  color="#ffffff"
-                                                emissive="#ffc280"
-                                                emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
+                         {...TEXT_OPTIONS_SMALL}>Josef Umdasch Platz 1 3300 Amstetten
+                         <meshStandardMaterial color="#ffffff"
+                              emissive="#ffc280"
+                              emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
                     </Text3D>
                     <Text3D font="/zl.json" position={[0.8, -4.9, 0]}
-                            {...textOptionsSmall}>T +43 7472 605 -0
-                         <meshStandardMaterial  color="#ffffff"
-                                                emissive="#ffc280"
-                                                emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
+                         {...TEXT_OPTIONS_SMALL}>T +43 7472 605 -0
+                         <meshStandardMaterial color="#ffffff"
+                              emissive="#ffc280"
+                              emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
                     </Text3D>
                     {/*<AnimatedText />*/}
                </Center>

@@ -1,152 +1,191 @@
-import {useEffect, useRef, useState} from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Center, Text3D } from '@react-three/drei';
-import * as THREE from 'three';
 
-function AnimatedText({targetOpacity,active }) {
+// -----------------------------------------------------------------------------
+// OPT: всё, что не меняется между рендерами, поднято на уровень модуля.
+// Раньше эти объекты/массивы создавались заново на каждом рендере.
+// -----------------------------------------------------------------------------
 
-     const materialRef1 = useRef()
-     const materialRef2 = useRef()
+const ARROWS = ['', '>', '>>', '>>>'];
 
-     useEffect(() => {
-          setTimeout(() => {
-               if (materialRef1.current) materialRef1.current.opacity = targetOpacity ?? 1
-               if (materialRef2.current) materialRef2.current.opacity = targetOpacity ?? 1
-               active(true)
-          },5700)
+// Опции текста. Значения 1:1 как были — геометрия не меняется.
+const TEXT_ARROW = {
+     font: '/font.json',
+     size: 0.2,
+     height: 0.2,
+     curveSegments: 12,
+     bevelEnabled: true,
+     bevelThickness: 0.02,
+     bevelSize: 0.01,
+};
 
-     }, [targetOpacity])
+const TEXT_TRIGGER = {
+     font: '/font.json',
+     size: 0.2,
+     height: 0.2,
+     curveSegments: 12,
+     lineHeight: 0.7,
+     letterSpacing: 0.05,
+};
 
-     const groupRef = useRef()
-     const [arrowCount, setArrowCount] = useState(0)
-     const timerRef = useRef(0)
-     useFrame((state, delta) => {
-          const time = state.clock.getElapsedTime()
-          if (groupRef.current) {
-               groupRef.current.position.y = Math.sin(time * 1.5) * 0.05
-          }
-          timerRef.current += delta
-          if (timerRef.current > 0.4) {
-               timerRef.current = 0
-               setArrowCount((prev) => (prev + 1) % 4)
-          }
-     })
-     const textOptions = {
-          font: '/font.json',
-          size: 0.2, height: 0.2,
-          curveSegments: 12,
-          bevelEnabled: true,
-          bevelThickness: 0.02,
-          bevelSize: 0.01,
-          opacity: 0,
-     }
-     const textOptionsTrigger = {   font: '/font.json', size: 0.2, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const arrows = ['', '>', '>>', '>>>']
-     return (
-          <>
-               <Text3D {...textOptionsTrigger} position={[2.7, -5.2, 0]}>
-                    {"SCROLL TO EXPLORE THE PROCESS "}
-                    <meshStandardMaterial  ref={materialRef1} color="#ffffff"
-                                          emissive="#ffc280"  opacity={0}  emissiveIntensity={3} transparent  toneMapped={false} roughness={0.2} metalness={0.8} />
-               </Text3D>
-               <Text3D {...textOptions} position={[9.7, -5.2, 0]}>
-                    {arrows[arrowCount]}
-                    <meshStandardMaterial  ref={materialRef2} color="#ffffff"
-                                          emissive="#ffc280"
-                                          emissiveIntensity={3} toneMapped={false}  opacity={0}  transparent  roughness={0.1} metalness={0.6} />
-               </Text3D>
-          </>
+const TEXT_BIG = { size: 1.8, height: 0.2, curveSegments: 12, lineHeight: 0.7, letterSpacing: 0.05 };
+const TEXT_SMALL = { size: 0.3, height: 0.2, curveSegments: 12, lineHeight: 0.7, letterSpacing: 0.05 };
 
+// -----------------------------------------------------------------------------
+// OPT: uniform и onBeforeCompile вынесены из компонента.
+// Раньше onBeforeCompile был новой функцией на каждом рендере -> R3F
+// переприсваивал её трём материалам и дёргал пересборку программы шейдера.
+// Исходник шейдера идентичен прежнему.
+// -----------------------------------------------------------------------------
+const uTime = { value: 0 };
 
-     )
+function wavyOnBeforeCompile(shader) {
+     shader.uniforms.uTime = uTime;
+     shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
+     shader.vertexShader = shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>\ntransformed.z += sin(transformed.x * 0.6 + uTime
+* 3.5) * 0.25;`
+     );
 }
 
+// Все три "волнистых" материала компилируются в одну и ту же программу,
+// различаются только uniform'ом color -> отдаём общий cache key.
+const wavyCacheKey = () => 'wavyText';
 
-export default function FlagText({active}) {
+// -----------------------------------------------------------------------------
+// OPT: мигающие стрелки вынесены в отдельный лист-компонент.
+// Раньше setArrowCount жил в AnimatedText/FlagText и каждые 0.4с
+// ре-рендерил ВСЁ дерево (5 Text3D). Теперь ре-рендерится только этот узел.
+// Важно: остаётся ровно один Text3D со сменой текста — если рендерить
+// 4 меша и прятать лишние, drei <Center> посчитает их в bounding box
+// и сдвинет весь блок. Позиции обязаны остаться прежними.
+// -----------------------------------------------------------------------------
+function ArrowTicker({ opacity }) {
+     const [arrowCount, setArrowCount] = useState(0);
+     const timerRef = useRef(0);
 
-     const groupRef = useRef()
-     const [arrowCount, setArrowCount] = useState(0)
-     const timerRef = useRef(0)
-     useFrame((state, delta) => {
-          const time = state.clock.getElapsedTime()
-          if (groupRef.current) {
-               groupRef.current.position.y = Math.sin(time * 1.5) * 0.05
-          }
-          timerRef.current += delta
+     useFrame((_, delta) => {
+          timerRef.current += delta;
           if (timerRef.current > 0.4) {
-               timerRef.current = 0
-               setArrowCount((prev) => (prev + 1) % 4)
+               timerRef.current = 0;
+               setArrowCount((prev) => (prev + 1) % 4);
           }
-     })
-     const textOptions1 = {
-          font: '/font.json',
-          size: 0.2, height: 0.2,
-          curveSegments: 12,
-          bevelEnabled: true,
-          bevelThickness: 0.02,
-          bevelSize: 0.01,
-     }
-     const arrows = ['', '>', '>>', '>>>']
-
-     // const groupRef = useRef();
-     const uniformsRef = useRef({ uTime: { value: 0 } });
-     useFrame((state) => {
-          uniformsRef.current.uTime.value = state.clock.getElapsedTime();
      });
-     const handleBeforeCompile = (shader) => {
-          shader.uniforms.uTime = uniformsRef.current.uTime;
-          shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
-          shader.vertexShader = shader.vertexShader.replace(
-               '#include <begin_vertex>',
-               `#include <begin_vertex>\ntransformed.z += sin(transformed.x * 0.6 + uTime
-* 3.5) * 0.25;`
-          );
-     };
 
-     const [activeScroll, setActiveScroll] = useState(false);
+     return (
+          <Text3D {...TEXT_ARROW} position={[9.7, -5.2, 0]}>
+               {ARROWS[arrowCount]}
+               <meshStandardMaterial
+                    color="#ffffff"
+                    emissive="#ffc280"
+                    emissiveIntensity={3}
+                    toneMapped={false}
+                    opacity={opacity}
+                    transparent
+                    roughness={0.1}
+                    metalness={0.6}
+               />
+          </Text3D>
+     );
+}
+
+function AnimatedText({ targetOpacity = 1, active }) {
+     // OPT: было императивное присваивание material.opacity через два ref.
+     // Теперь один state -> ровно один ре-рендер на 5700мс, поведение то же.
+     const [opacity, setOpacity] = useState(0);
+
+     // OPT: колбэк держим в ref, чтобы таймер не перезапускался при смене
+     // ссылки на active у родителя.
+     const activeRef = useRef(active);
+     activeRef.current = active;
 
      useEffect(() => {
-          setTimeout(() => {
-               setActiveScroll(true)
-          },1500)
-     })
-     // useFrame(() => {
-     //      setTimeout(() => {
-     //           setActiveScroll(true)
-     //      },1500)
-     // })
+          // OPT: добавлен clearTimeout — раньше таймер не отменялся при
+          // размонтировании и дёргал setState/active у мёртвого компонента.
+          const id = setTimeout(() => {
+               setOpacity(targetOpacity ?? 1);
+               activeRef.current?.(true);
+          }, 5700);
 
-     const textOptions = { size: 1.8, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const textOptionsSmall = { size: 0.3, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
-     const textOptionsTrigger = { size: 0.2, height: 0.2, curveSegments: 12, lineHeight:
-               0.7, letterSpacing: 0.05 };
+          return () => clearTimeout(id);
+     }, [targetOpacity]);
+
      return (
-          <group ref={groupRef} position={[0,1.2,0]}>
+          <>
+               <Text3D {...TEXT_TRIGGER} position={[2.7, -5.2, 0]}>
+                    {'SCROLL TO EXPLORE THE PROCESS '}
+                    <meshStandardMaterial
+                         color="#ffffff"
+                         emissive="#ffc280"
+                         opacity={opacity}
+                         emissiveIntensity={3}
+                         transparent
+                         toneMapped={false}
+                         roughness={0.2}
+                         metalness={0.8}
+                    />
+               </Text3D>
+
+               <ArrowTicker opacity={opacity} />
+          </>
+     );
+}
+
+export default function FlagText({ active }) {
+     const groupRef = useRef();
+
+     // OPT: было три отдельных useFrame (два из них — дубли с мёртвым
+     // groupRef в AnimatedText). Теперь одна подписка на render-loop.
+     useFrame((state) => {
+          const time = state.clock.getElapsedTime();
+          uTime.value = time;
+          if (groupRef.current) {
+               groupRef.current.position.y = Math.sin(time * 1.5) * 0.05;
+          }
+     });
+
+     return (
+          <group ref={groupRef} position={[0, 1.2, 0]}>
                <Center>
-                    <Text3D font="/zb.json" {...textOptions}>
+                    <Text3D font="/zb.json" {...TEXT_BIG}>
                          Next level
                          <meshStandardMaterial
-                              color="#F54927"  emissive="#ffc280" emissiveIntensity={3} toneMapped={false}  onBeforeCompile={handleBeforeCompile}
+                              color="#F54927"
+                              emissive="#ffc280"
+                              emissiveIntensity={3}
+                              toneMapped={false}
+                              onBeforeCompile={wavyOnBeforeCompile}
+                              customProgramCacheKey={wavyCacheKey}
                          />
                     </Text3D>
 
                     {/* Вторая строка — смещена вниз по оси Y */}
-                    <Text3D font="/zb.json" position={[0.6, -2.6, 0]} {...textOptions}>
+                    <Text3D font="/zb.json" position={[0.6, -2.6, 0]} {...TEXT_BIG}>
                          building.
                          <meshStandardMaterial
-                              color="#ffffff"  emissive="#ffc280" emissiveIntensity={3} toneMapped={false}  onBeforeCompile={handleBeforeCompile}
+                              color="#ffffff"
+                              emissive="#ffc280"
+                              emissiveIntensity={3}
+                              toneMapped={false}
+                              onBeforeCompile={wavyOnBeforeCompile}
+                              customProgramCacheKey={wavyCacheKey}
                          />
                     </Text3D>
-                    <Text3D font="/zl.json" position={[1.4, -3.9, 0]}
-                            {...textOptionsSmall}>
+
+                    <Text3D font="/zl.json" position={[1.4, -3.9, 0]} {...TEXT_SMALL}>
                          With  a digitalization formwork process.
-                         <meshStandardMaterial  color="#ffffff"
-                                                emissive="#ffc280"
-                                               emissiveIntensity={3} toneMapped={false} onBeforeCompile={handleBeforeCompile} />
+                         <meshStandardMaterial
+                              color="#ffffff"
+                              emissive="#ffc280"
+                              emissiveIntensity={3}
+                              toneMapped={false}
+                              onBeforeCompile={wavyOnBeforeCompile}
+                              customProgramCacheKey={wavyCacheKey}
+                         />
                     </Text3D>
+
                     <AnimatedText active={active} />
                </Center>
           </group>

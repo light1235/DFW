@@ -30,7 +30,7 @@ export default function PortalText() {
           <group ref={groupRef} position={[0,1.2,3]}>
                <Center>
                     <Text3D font="/zb.json" {...textOptions}>
-                         «Click to enter»
+                         Click to ENTER
                          <meshStandardMaterial
                               color="#ffc280"   toneMapped={false}
                          />

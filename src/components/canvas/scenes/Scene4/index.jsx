@@ -1,9 +1,10 @@
-import React, {useMemo, useRef, useEffect, useState} from 'react';
-import {useFrame, useThree} from '@react-three/fiber';
-import {OrbitControls, Environment, Outlines, Float} from '@react-three/drei';
-import {EffectComposer, Bloom, Vignette, Scanline} from '@react-three/postprocessing';
+import { useMemo, useRef, useEffect, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Environment, Float } from '@react-three/drei';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import {BlendFunction} from "postprocessing";
+// OPT: убраны неиспользуемые импорты Outlines, Scanline, BlendFunction и
+// дефолтный React (JSX-рантайм автоматический, "React." в файле не встречается).
 
 // --- CONFIG: Пресет Golden Twilight ---
 const CONFIG = {
@@ -144,16 +145,39 @@ const SkyShaderMaterial = {
   `,
 };
 
+// OPT: аргументы конструкторов и статические трансформы вынесены на уровень
+// модуля. BackgroundSky не мемоизирован и перерисовывается вместе с родителем
+// (например, при setExtrude(true) через 4 секунды), а новый литерал массива в
+// args на каждом рендере — повод для R3F пересобрать материал и геометрию.
+// Значения ровно те же.
+const SKY_MATERIAL_ARGS = [SkyShaderMaterial];
+const SKY_GEOMETRY_ARGS = [140, 32, 32];
+const SKY_SCALE = [-1, 1, 1];
+const SKY_POSITION = [0, 10, 0];
+
 function BackgroundSky() {
      const shaderRef = useRef();
      const starsRef = useRef();
      const starTexture = useMemo(() => generateStarTexture(), []);
 
-     const { positions, scales, phases } = useMemo(() => {
+     // -------------------------------------------------------------------------
+     // OPT / МЁРТВЫЙ КОД: раньше здесь генерировались ещё массивы scales и
+     // phases, а useFrame каждый кадр перезаписывал ими атрибут "size" и ставил
+     // needsUpdate = true — 1200 итераций и повторная заливка 1200 float на GPU
+     // 60 раз в секунду.
+     //
+     // Проверено по исходнику three.js
+     // (node_modules/three/src/renderers/shaders/ShaderLib/points.glsl.js):
+     //     uniform float size;
+     //     gl_PointSize = size;
+     // size там объявлен как UNIFORM, атрибута "size" в шейдере точек нет
+     // вообще. pointsMaterial молча игнорировал этот атрибут: мерцание и
+     // разброс размеров звёзд не работали никогда, все звёзды всегда рисовались
+     // одним размером из uniform size={1.5}. Картинка не меняется.
+     // -------------------------------------------------------------------------
+     const positions = useMemo(() => {
           const count = CONFIG.starCount;
           const pos = new Float32Array(count * 3);
-          const sc = new Float32Array(count);
-          const ph = new Float32Array(count);
           const radius = 120;
 
           for (let i = 0; i < count; i++) {
@@ -165,44 +189,36 @@ function BackgroundSky() {
                pos[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
                pos[i * 3 + 1] = radius * Math.cos(phi) + 15;
                pos[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-
-               const isBright = Math.random() < 0.03;
-               sc[i] = isBright ? Math.random() * 1.8 + 2.2 : Math.random() * 0.8 + 0.5;
-               ph[i] = Math.random() * Math.PI * 2;
           }
-          return { positions: pos, scales: sc, phases: ph };
+          return pos;
      }, []);
 
+     // OPT: args для bufferAttribute тоже со стабильной ссылкой.
+     const positionArgs = useMemo(() => [positions, 3], [positions]);
+
      useFrame((state) => {
+          // OPT: getElapsedTime() вызывался трижды за кадр — теперь один раз.
+          const t = state.clock.getElapsedTime();
+
           if (shaderRef.current) {
-               shaderRef.current.uniforms.uTime.value = state.clock.getElapsedTime();
+               shaderRef.current.uniforms.uTime.value = t;
           }
+          // Вращение звёздного купола — единственная реально видимая анимация.
           if (starsRef.current) {
-               starsRef.current.rotation.y = state.clock.getElapsedTime() * 0.0015;
-               const geom = starsRef.current.geometry;
-               const sizesAttr = geom.attributes.size;
-               if (sizesAttr) {
-                    const time = state.clock.getElapsedTime() * 1.5;
-                    const array = sizesAttr.array;
-                    for (let i = 0; i < CONFIG.starCount; i++) {
-                         array[i] = scales[i] * (Math.sin(time + phases[i]) * 0.35 + 0.85);
-                    }
-                    sizesAttr.needsUpdate = true;
-               }
+               starsRef.current.rotation.y = t * 0.0015;
           }
      });
 
      return (
           <>
-               <mesh scale={[-1, 1, 1]} position={[0, 10, 0]}>
-                    <sphereGeometry args={[140, 32, 32]} />
-                    <shaderMaterial ref={shaderRef} args={[SkyShaderMaterial]} side={THREE.BackSide} depthWrite={false} />
+               <mesh scale={SKY_SCALE} position={SKY_POSITION}>
+                    <sphereGeometry args={SKY_GEOMETRY_ARGS} />
+                    <shaderMaterial ref={shaderRef} args={SKY_MATERIAL_ARGS} side={THREE.BackSide} depthWrite={false} />
                </mesh>
 
                <points ref={starsRef}>
                     <bufferGeometry>
-                         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-                         <bufferAttribute attach="attributes-size" args={[scales, 1]} />
+                         <bufferAttribute attach="attributes-position" args={positionArgs} />
                     </bufferGeometry>
                     <pointsMaterial map={starTexture} size={1.5} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
                </points>
@@ -261,6 +277,17 @@ function CloudLayer() {
           });
      }, [cloudTexture]);
 
+     // OPT: одна общая геометрия на все 28 облаков. Раньше каждый меш объявлял
+     // свой <planeGeometry args={[1, 1]} />, то есть создавалось 28 одинаковых
+     // геометрий (28 наборов буферов в GPU-памяти вместо одного). Форма и
+     // размер не меняются: облака масштабируются через scale, плоскость 1x1
+     // у всех была идентичной.
+     const sharedPlane = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+
+     // ВНИМАНИЕ: блок ниже не тронут специально. Генератор rand() здесь
+     // детерминированный (seed 98765), и порядок вызовов задаёт положение
+     // каждого облака. Любой лишний, убранный или переставленный вызов rand()
+     // сдвинет всю последовательность и раскидает облака по другим местам.
      const cloudPuffs = useMemo(() => {
           const puffs = [];
           let s = 98765;
@@ -286,33 +313,49 @@ function CloudLayer() {
      }, []);
 
      useFrame((state) => {
-          if (groupRef.current) {
-               const time = state.clock.getElapsedTime() * CONFIG.cloudSpeed * 0.1;
-               groupRef.current.children.forEach((child, idx) => {
-                    const puff = cloudPuffs[idx];
-                    if (puff) {
-                         child.position.x = puff.position[0] + Math.sin(time * puff.speed + idx) * 0.8;
-                         child.position.y = puff.position[1] + Math.cos(time * 0.5 * puff.speed + idx) * 0.4;
-                    }
-               });
+          const group = groupRef.current;
+          if (!group) return;
+
+          const time = state.clock.getElapsedTime() * CONFIG.cloudSpeed * 0.1;
+          const children = group.children;
+
+          // OPT: обычный for вместо children.forEach — без создания
+          // колбэка-замыкания на каждом кадре. Формулы не тронуты.
+          for (let idx = 0; idx < children.length; idx++) {
+               const puff = cloudPuffs[idx];
+               if (!puff) continue;
+               const child = children[idx];
+               child.position.x = puff.position[0] + Math.sin(time * puff.speed + idx) * 0.8;
+               child.position.y = puff.position[1] + Math.cos(time * 0.5 * puff.speed + idx) * 0.4;
           }
      });
 
      return (
           <group ref={groupRef}>
                {cloudPuffs.map((puff, i) => (
-                    <mesh key={i} position={puff.position} scale={puff.scale} rotation={[0, 0, puff.rotationZ]} material={cloudMaterial}>
-                         <planeGeometry args={[1, 1]} />
-                    </mesh>
+                    <mesh
+                         key={i}
+                         position={puff.position}
+                         scale={puff.scale}
+                         rotation={[0, 0, puff.rotationZ]}
+                         material={cloudMaterial}
+                         geometry={sharedPlane}
+                    />
                ))}
           </group>
      );
 }
 
 // --- 3. Монолиты с анимацией роста по оси Y ---
+// OPT: длительность вынесена из кадрового цикла — раньше const duration = 1.6
+// объявлялся заново для каждого монолита на каждом кадре.
+const MONOLITH_DURATION = 1.6; // Длительность роста одного монолита в секундах
+
 function Monoliths() {
      const meshRefs = useRef([]);
      const animTime = useRef(0);
+     // OPT: флаг завершения анимации — см. комментарий в useFrame.
+     const isDone = useRef(false);
 
      const material = useMemo(() => {
           return new THREE.MeshPhysicalMaterial({
@@ -356,7 +399,24 @@ function Monoliths() {
      // Анимация роста от 0% до 100% при появлении
      const START_DELAY = 2.0;
 
+     // OPT: момент окончания всей каскадной анимации считается один раз.
+     // Самый поздний монолит стартует с задержкой maxDelay и растёт
+     // MONOLITH_DURATION секунд — после этого у всех scale.y уже равен 1.
+     const finishTime = useMemo(() => {
+          let maxDelay = 0;
+          for (const item of monolithData) {
+               if (item.delay > maxDelay) maxDelay = item.delay;
+          }
+          return maxDelay + MONOLITH_DURATION;
+     }, [monolithData]);
+
      useFrame((_, delta) => {
+          // OPT: после завершения роста useFrame больше ничего не делает.
+          // Раньше цикл крутился всю жизнь сцены и каждый кадр заново писал
+          // scale.y = 1 всем монолитам, а запись в scale помечает матрицы
+          // объекта грязными и заставляет пересчитывать их на каждом кадре.
+          if (isDone.current) return;
+
           animTime.current += delta;
 
           // 1. Если общее время меньше глобальной задержки, ничего не делаем
@@ -367,24 +427,32 @@ function Monoliths() {
           // 2. Вычитаем глобальную задержку, чтобы отсчет анимации монолитов начался с 0
           const globalElapsed = animTime.current - START_DELAY;
 
-          monolithData.forEach((item, index) => {
+          // OPT: for вместо forEach — без замыкания на каждом кадре.
+          // Математика прогресса не изменена.
+          for (let index = 0; index < monolithData.length; index++) {
+               const item = monolithData[index];
                const meshGroup = meshRefs.current[index];
-               if (!meshGroup) return;
+               if (!meshGroup) continue;
 
                // 3. Считаем время с учетом индивидуального каскадного дилея
                const elapsed = globalElapsed - item.delay;
 
                if (elapsed <= 0) {
                     meshGroup.scale.y = 0;
-                    return;
+                    continue;
                }
 
-               const duration = 1.6; // Длительность роста одного монолита в секундах
-               const rawProgress = Math.min(1, elapsed / duration);
+               const rawProgress = Math.min(1, elapsed / MONOLITH_DURATION);
                const easeOutProgress = 1 - Math.pow(1 - rawProgress, 3);
 
                meshGroup.scale.y = easeOutProgress;
-          });
+          }
+
+          // Флаг ставится только после того, как в этом же кадре всем
+          // монолитам уже присвоен финальный scale.y = 1.
+          if (globalElapsed >= finishTime) {
+               isDone.current = true;
+          }
      });
      return (
           <group position={[0, 0, 0]}>
@@ -486,7 +554,7 @@ export function ExtrudedArrow() {
                     roughness={0.1}
                     metalness={0.1}
                     clearcoat={0}
-                    // transmission={0.85}
+               // transmission={0.85}
                />
                {/*<Outlines thickness={0.08} color="#ffffff" />*/}
           </mesh>
@@ -494,7 +562,7 @@ export function ExtrudedArrow() {
 } // <- Эта скобка отсутствовала
 
 // --- Главный экспортируемый компонент СЦЕНЫ (для вставки ВНУТРЬ вашего <Canvas>) ---
-export default function GoldenMonolithScene({cameraMono,poster}) {
+export default function GoldenMonolithScene({ cameraMono, poster }) {
      const { camera } = useThree()
      const [extrude, setExtrude] = useState(false);
      //
@@ -507,12 +575,12 @@ export default function GoldenMonolithScene({cameraMono,poster}) {
           camera.updateProjectionMatrix();
           setTimeout(() => {
                poster(true)
-          },5500)
+          }, 5500)
           setTimeout(() => {
                setExtrude(true);
-          },4000)
+          }, 4000)
 
-     }, [camera, cameraMono,poster,extrude]);
+     }, [camera, cameraMono, poster, extrude]);
 
      return (
           <>
@@ -531,7 +599,7 @@ export default function GoldenMonolithScene({cameraMono,poster}) {
 
                {/* Облака */}
                <CloudLayer />
-               {cameraMono && <Monoliths/>}
+               {cameraMono && <Monoliths />}
                {cameraMono && <CameraController />}
 
 

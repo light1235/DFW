@@ -1,5 +1,5 @@
-import React, {forwardRef, useEffect, useRef} from 'react';
-import {extend, useFrame, useThree} from '@react-three/fiber';
+import React, { forwardRef, memo, useEffect, useMemo, useRef } from 'react';
+import { extend, useFrame, useThree } from '@react-three/fiber';
 import { shaderMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 import { animate } from 'animejs'; // v4
@@ -19,17 +19,14 @@ const RainbowLaserMaterial = shaderMaterial(
      },
      /* Vertex Shader */ `
     varying vec2 vUv;
-    varying vec3 vPosition;
     void main() {
       vUv = uv;
-      vPosition = position;
       vec4 modelPosition = modelMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * viewMatrix * modelPosition;
     }
   `,
      /* Fragment Shader */ `
     varying vec2 vUv;
-    varying vec3 vPosition;
     uniform float fade;
     uniform float speed;
     uniform float emissiveIntensity;
@@ -73,7 +70,7 @@ const RainbowLaserMaterial = shaderMaterial(
       return y;
     }
 
-    vec3 spectral_zucconi6(float w, float t) {    
+    vec3 spectral_zucconi6(float w) {    
       float x = _saturate((w - 400.0) / 300.0);
       const vec3 c1 = vec3(3.54585104, 2.93225262, 2.41593945);
       const vec3 x1 = vec3(0.69549072, 0.49228336, 0.27699880);
@@ -85,21 +82,25 @@ const RainbowLaserMaterial = shaderMaterial(
     }
 
     void main() {
-      float rainbowProgress = vUv.y + (vUv.x * 0.2); 
-      float w = mod((rainbowProgress - time * 0.1) * 300.0, 300.0) + 400.0; 
-
-      vec3 c = spectral_zucconi6(w, time);
-      vec3 iri = iridescence(vUv.x * 3.14159, 1.0 - vUv.y + time * 0.1);
-      vec3 finalColor = c / max(vec3(0.1), iri) * 1.8;
-
+      // OPT: альфа не зависит от цвета — считаем её первой и отбрасываем
+      // фрагмент до дорогих spectral_zucconi6/iridescence. Результат идентичен.
       float edgeFade = smoothstep(0.0, fade, vUv.y) * smoothstep(1.0, 1.0 - fade, vUv.y);
       float sideFade = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
-      
+
       // ЭФФЕКТ РОСТА: отсекаем альфу по координате vUv.y (длина конуса от 0 до 1)
       // vUv.y идет снизу вверх, поэтому инвертируем или оставляем в зависимости от направления конуса
       float growthAlpha = smoothstep((1.0 - vUv.y) - 0.05, (1.0 - vUv.y), uProgress);
 
       float alpha = edgeFade * sideFade * growthAlpha;
+
+      if (alpha * emissiveIntensity < 0.01 && alpha < 0.01) discard;
+
+      float rainbowProgress = vUv.y + (vUv.x * 0.2); 
+      float w = mod((rainbowProgress - time * 0.1) * 300.0, 300.0) + 400.0; 
+
+      vec3 c = spectral_zucconi6(w);
+      vec3 iri = iridescence(vUv.x * 3.14159, 1.0 - vUv.y + time * 0.1);
+      vec3 finalColor = c / max(vec3(0.1), iri) * 1.8;
 
       gl_FragColor = vec4(finalColor * alpha * emissiveIntensity, alpha);
       if (gl_FragColor.a < 0.01) discard;
@@ -111,7 +112,7 @@ const RainbowLaserMaterial = shaderMaterial(
 
 extend({ RainbowLaserMaterial });
 
-export const ConeLaser = forwardRef((props, ref) => {
+const ConeLaser = memo(forwardRef((props, ref) => {
      const {
           radius = 0.3,
           height = 5.0,
@@ -129,6 +130,13 @@ export const ConeLaser = forwardRef((props, ref) => {
      const materialRef = useRef();
      const { invalidate } = useThree();
 
+     // OPT: без useMemo массив args пересоздаётся на каждом рендере родителя,
+     // и R3F заново собирает ConeGeometry. Теперь только при смене размеров.
+     const geometryArgs = useMemo(
+          () => [radius, height, radialSegments, heightSegments, false, 0, thetaLength],
+          [radius, height, radialSegments, heightSegments, thetaLength]
+     );
+
      useEffect(() => {
           if (!materialRef.current) return;
 
@@ -139,7 +147,7 @@ export const ConeLaser = forwardRef((props, ref) => {
                duration: 1300,
                ease: 'outQuad',
                autoplay: true,
-               delay:1300,
+               delay: 1300,
                onUpdate: invalidate
           });
 
@@ -147,16 +155,16 @@ export const ConeLaser = forwardRef((props, ref) => {
      }, [active, invalidate]);
 
      useFrame((_, delta) => {
-          if (materialRef.current) {
-               materialRef.current.time -= delta * materialRef.current.speed;
-          }
+          const mat = materialRef.current;
+          // OPT: читаем speed из пропса, а не через геттер uniform'а материала
+          if (mat) mat.time -= delta * speed;
      });
 
      return (
           <mesh ref={ref} {...restProps}>
                <coneGeometry
-                    args={[radius, height, radialSegments, heightSegments, false, 0, thetaLength]}
-                    // МЫ УБРАЛИ self.translate(), позиция вернется в норму!
+                    args={geometryArgs}
+               // МЫ УБРАЛИ self.translate(), позиция вернется в норму!
                />
                <rainbowLaserMaterial
                     ref={materialRef}
@@ -171,7 +179,8 @@ export const ConeLaser = forwardRef((props, ref) => {
                />
           </mesh>
      );
-});
+}));
 
 ConeLaser.displayName = 'ConeLaser';
+export { ConeLaser };
 export default ConeLaser;

@@ -135,7 +135,7 @@ export default function TowerText({active = true}) {
 
                     {/* Вторая строка — смещена вниз по оси Y */}
                     <Text3D font="/zb.json" position={[0.6, -1.6, 0]} {...textOptions}>
-                         to Tower
+                         to Go
                          <meshStandardMaterial
                               color="#fefefe"   toneMapped={false}
                          />

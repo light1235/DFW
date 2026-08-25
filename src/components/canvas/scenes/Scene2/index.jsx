@@ -1,5 +1,5 @@
-import React, {useRef, useMemo, useState, useLayoutEffect, useEffect, Suspense} from 'react';
-import {useFrame, useThree} from '@react-three/fiber';
+import React, { useRef, useMemo, useState, useLayoutEffect, useEffect, useCallback } from 'react';
+import { useFrame } from '@react-three/fiber';
 import {
      Html,
      MeshPortalMaterial,
@@ -12,47 +12,66 @@ import {
 import * as THREE from "three";
 import { animate } from 'animejs';
 import 'animejs/adapters/three';
-import {AnimatedText} from "../Scene3/index.jsx";
+import { AnimatedText } from "../Scene3/index.jsx";
+// OPT: убраны неиспользуемые импорты Suspense и useThree.
 
 
-export function AnimatedTorus({ scale = 0.5, position = [0, 0, 0], rotation = [0, 0, 0] }) {
-     const meshRef = useRef();
+// -----------------------------------------------------------------------------
+// OPT: uniforms тора подняты на уровень модуля.
+// torus анимируется только от глобального clock (не зависит от пропсов),
+// tube — константа. Все экземпляры могут делить одни и те же uniform-объекты:
+// запись одинакового значения из нескольких useFrame идемпотентна.
+// -----------------------------------------------------------------------------
+const torusUniforms = {
+     torus: { value: 2.0 },
+     tube: { value: 0.2 },
+};
 
-     const uniforms = useMemo(() => ({
-          torus: { value: 2.0 },
-          tube: { value: 0.2 }
-     }), []);
-
-     const handleBeforeCompile = useMemo(() => {
-          return (shader) => {
-               shader.uniforms.torus = uniforms.torus;
-               shader.uniforms.tube = uniforms.tube;
-               shader.vertexShader = `
+// OPT: onBeforeCompile больше не пересоздаётся.
+// useMemo раньше спасал от пересоздания функции, но Three.js всё равно вызывает
+// onBeforeCompile.toString() внутри дефолтного customProgramCacheKey() при
+// подготовке материала — это аллокация большой строки на каждый кадр.
+const handleTorusBeforeCompile = (shader) => {
+     shader.uniforms.torus = torusUniforms.torus;
+     shader.uniforms.tube = torusUniforms.tube;
+     shader.vertexShader = `
         uniform float torus;
         uniform float tube;
         ${shader.vertexShader}
       `.replace(
-                    `#include <begin_vertex>`,
-                    `#include <begin_vertex>
+          `#include <begin_vertex>`,
+          `#include <begin_vertex>
         vec2 normalizedRadius = normalize(position.xy);
         vec3 nominalCenter = vec3(normalizedRadius * 2., 0.);
         vec3 dirFromNominalCenter = normalize(position - nominalCenter);
         vec3 tubeCenter = vec3(normalizedRadius * torus, 0.);
         vec3 tubeRadius = dirFromNominalCenter * tube;
         transformed = tubeCenter + tubeRadius;`
-               );
-          };
-     }, [uniforms]);
+     );
+};
 
+// OPT: константный cache key вместо toString() модифицирующей функции.
+const torusProgramCacheKey = () => 'animated-torus-scene2';
+
+// OPT: args вынесены из JSX — инлайн-массив заставлял R3F пересобирать
+// TorusGeometry (36 * 72 сегментов) на каждом рендере.
+const TORUS_ARGS = [2, 1, 36, 72];
+
+export function AnimatedTorus({ scale = 0.5, position = [0, 0, 0], rotation = [0, 0, 0] }) {
+     // OPT: убран неиспользуемый meshRef.
      useFrame((state) => {
           const t = (state.clock.getElapsedTime() % 2) / 2;
-          uniforms.torus.value = THREE.MathUtils.lerp(2, 3.3, t);
+          torusUniforms.torus.value = THREE.MathUtils.lerp(2, 3.3, t);
      });
 
      return (
-          <mesh ref={meshRef} scale={scale} position={position} rotation={rotation}>
-               <torusGeometry args={[2, 1, 36, 72]} />
-               <meshLambertMaterial color="lightyellow" onBeforeCompile={handleBeforeCompile} />
+          <mesh scale={scale} position={position} rotation={rotation}>
+               <torusGeometry args={TORUS_ARGS} />
+               <meshLambertMaterial
+                    color="lightyellow"
+                    onBeforeCompile={handleTorusBeforeCompile}
+                    customProgramCacheKey={torusProgramCacheKey}
+               />
           </mesh>
      );
 }
@@ -125,7 +144,14 @@ const MODELS_DATA = [
      }
 ];
 
-export function InteractiveModel({ config, isActive, onClick }) {
+// ПРИМЕЧАНИЕ: сознательно НЕ делаем useGLTF.preload на уровне модуля.
+// Этот файл импортируется на старте приложения, а видна первой Scene1 —
+// предзагрузка 5 GLB отняла бы трафик у ассетов первого экрана.
+// Если нужен прогрев, его стоит запускать по факту показа портала.
+
+// OPT: React.memo — раньше каждое изменение activeId в LabScene ре-рендерило
+// ВСЕ 5 моделей (включая те, у которых isActive не менялся).
+export const InteractiveModel = React.memo(function InteractiveModel({ config, isActive, onClick }) {
      const { scene } = useGLTF(config.url);
      const [matcapTexture] = useMatcapTexture('9B9994_E1E0DB_474643_544C4C', 1024);
 
@@ -140,6 +166,13 @@ export function InteractiveModel({ config, isActive, onClick }) {
      const matcapMaterial = useMemo(() => {
           return new THREE.MeshMatcapMaterial({ matcap: matcapTexture });
      }, [matcapTexture]);
+
+     // OPT: материал создаётся через new, значит его нужно освобождать вручную.
+     // Геометрии остаются общими с закешированным оригиналом GLTF (clone их
+     // переиспользует), поэтому их трогать нельзя — только материал.
+     useEffect(() => {
+          return () => matcapMaterial.dispose();
+     }, [matcapMaterial]);
 
      // 2. Применение материала через useLayoutEffect
      useLayoutEffect(() => {
@@ -185,15 +218,14 @@ export function InteractiveModel({ config, isActive, onClick }) {
           }
      });
 
-     const handlePointerOver = (e) => {
-          e.stopPropagation()
-          document.body.style.cursor = 'pointer'
+     // OPT: обработчик клика стабилизирован, чтобы memo выше не сбрасывался.
+     const handleClick = useCallback((e) => {
+          e.stopPropagation();
+          onClick(config.id);
+     }, [onClick, config.id]);
 
-     }
-
-     const handlePointerOut = () => {
-          document.body.style.cursor = 'auto'
-     }
+     // OPT: удалены handlePointerOver / handlePointerOut — они объявлялись,
+     // но ни к одному элементу не подключались (мёртвый код).
 
      return (
           // Базовая статическая позиция из конфига
@@ -203,13 +235,7 @@ export function InteractiveModel({ config, isActive, onClick }) {
                     {/* Группа для поворота и масштабирования */}
                     <group rotation={config.rotation}>
                          <group ref={scaleGroupRef}>
-                              <group
-                                   ref={spinGroupRef}
-                                   onClick={(e) => {
-                                        e.stopPropagation();
-                                        onClick(config.id);
-                                   }}
-                              >
+                              <group ref={spinGroupRef} onClick={handleClick}>
                                    <primitive object={clonedScene} />
                               </group>
                          </group>
@@ -217,72 +243,87 @@ export function InteractiveModel({ config, isActive, onClick }) {
                </group>
           </group>
      );
-}
+});
+
+// -----------------------------------------------------------------------------
+// OPT: цели камеры считаются один раз на уровне модуля.
+// Раньше в useFrame был MODELS_DATA.find(...) — линейный поиск с созданием
+// замыкания каждый кадр. Математика та же: target = позиция модели,
+// позиция камеры = та же точка со смещением z + 3.
+// -----------------------------------------------------------------------------
+const MODEL_CAMERA_TARGETS = new Map(
+     MODELS_DATA.map((m) => [
+          m.id,
+          {
+               target: new THREE.Vector3(m.position[0], m.position[1], m.position[2]),
+               camPos: new THREE.Vector3(m.position[0], m.position[1], m.position[2] + 3),
+          },
+     ])
+);
+
+const DEFAULT_CAM_POS = new THREE.Vector3(0, 0, 10);
+const DEFAULT_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({ activeId, controlsRef }) {
-     const dummyCamPos = useMemo(() => new THREE.Vector3(), []);
-     const dummyTarget = useMemo(() => new THREE.Vector3(), []);
-
-     const defaultCamPos = useMemo(() => new THREE.Vector3(0, 0, 10), []);
-     const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
-
      useFrame((state, delta) => {
           if (!controlsRef.current) return;
 
-          if (activeId !== null) {
-               const activeModel = MODELS_DATA.find((m) => m.id === activeId);
-               const [x, y, z] = activeModel.position;
+          // OPT: вместо двух dummy-векторов и find() — прямой доступ к
+          // заранее посчитанным целям.
+          const entry = activeId !== null ? MODEL_CAMERA_TARGETS.get(activeId) : null;
+          const targetVec = entry ? entry.target : DEFAULT_TARGET;
+          const camVec = entry ? entry.camPos : DEFAULT_CAM_POS;
 
-               dummyTarget.set(x, y, z);
-               dummyCamPos.set(x, y, z + 3);
-          } else {
-               dummyTarget.copy(defaultTarget);
-               dummyCamPos.copy(defaultCamPos);
-          }
-
-          state.camera.position.lerp(dummyCamPos, delta * 4);
-          controlsRef.current.target.lerp(dummyTarget, delta * 4);
+          state.camera.position.lerp(camVec, delta * 4);
+          controlsRef.current.target.lerp(targetVec, delta * 4);
           controlsRef.current.update();
      });
 
      return null;
 }
 
+// OPT: константы конвейера подняты из тела компонента.
+const BELT_WIDTH = 1.8;
+const BELT_LENGTH = 24;
+const BELT_SEGMENTS_Y = 120;
+const BELT_ROTATION = [-Math.PI / 2.2, 0, 0];
+const BELT_POSITION = [0, 0, 0];
+const BELT_IMG_SOURCES = ['/draw/1.jpg', '/draw/2.jpg', '/draw/3.jpg', '/draw/4.jpg', '/draw/5.jpg'];
+
 export function ConveyorBelt() {
      const materialRef = useRef();
-     const boardWidth = 1.8;
-     const boardLength = 24;
-     const segmentsY = 120;
 
      const canvasTexture = useMemo(() => {
-          const imgSources = ['/draw/1.jpg', '/draw/2.jpg', '/draw/3.jpg', '/draw/4.jpg', '/draw/5.jpg'];
           const canvas = document.createElement('canvas');
           const imageHeight = 1024;
 
           canvas.width = 1024;
-          canvas.height = imageHeight * imgSources.length;
+          canvas.height = imageHeight * BELT_IMG_SOURCES.length;
           const ctx = canvas.getContext('2d');
-
-          imgSources.forEach((src, index) => {
-               const img = new Image();
-               img.src = src;
-               img.onload = () => {
-                    ctx.drawImage(img, 0, index * imageHeight, 1024, imageHeight);
-                    texture.needsUpdate = true;
-               };
-          });
 
           const texture = new THREE.CanvasTexture(canvas);
           texture.wrapS = THREE.RepeatWrapping;
           texture.wrapT = THREE.RepeatWrapping;
+
+          BELT_IMG_SOURCES.forEach((src, index) => {
+               const img = new Image();
+               img.onload = () => {
+                    ctx.drawImage(img, 0, index * imageHeight, 1024, imageHeight);
+                    texture.needsUpdate = true;
+               };
+               // OPT: src присваивается после onload — иначе для картинки из
+               // кеша событие могло сработать до навешивания обработчика.
+               img.src = src;
+          });
+
           return texture;
      }, []);
 
      const geometry = useMemo(() => {
-          const geo = new THREE.PlaneGeometry(boardWidth, boardLength, 1, segmentsY);
+          const geo = new THREE.PlaneGeometry(BELT_WIDTH, BELT_LENGTH, 1, BELT_SEGMENTS_Y);
           const position = geo.attributes.position;
           const radius = 1.5;
-          const halfLength = boardLength / 2;
+          const halfLength = BELT_LENGTH / 2;
           const straightLength = halfLength - radius;
 
           for (let i = 0; i < position.count; i++) {
@@ -304,6 +345,15 @@ export function ConveyorBelt() {
           return geo;
      }, []);
 
+     // OPT: геометрия и текстура создаются вручную (new), значит R3F их
+     // автоматически не освобождает — при закрытии портала утекала бы GPU-память.
+     useEffect(() => {
+          return () => {
+               geometry.dispose();
+               canvasTexture.dispose();
+          };
+     }, [geometry, canvasTexture]);
+
      useFrame((_, delta) => {
           if (materialRef.current && materialRef.current.map) {
                materialRef.current.map.offset.y += delta * 0.04;
@@ -311,12 +361,62 @@ export function ConveyorBelt() {
      });
 
      return (
-          <mesh geometry={geometry} rotation={[-Math.PI / 2.2, 0, 0]} position={[0, 0, 0]}>
+          <mesh geometry={geometry} rotation={BELT_ROTATION} position={BELT_POSITION}>
                <meshStandardMaterial ref={materialRef} map={canvasTexture} side={THREE.DoubleSide} roughness={0.2} />
           </mesh>
      );
 }
 
+// -----------------------------------------------------------------------------
+// OPT: стили HTML-аннотации подняты на уровень модуля.
+// Раньше это были три новых объекта на каждый рендер LabScene, из-за чего
+// React каждый раз считал inline-стили изменившимися.
+// -----------------------------------------------------------------------------
+const PANEL_STYLE = {
+     position: 'relative',
+     background: 'white',
+     backdropFilter: 'blur(8px)',
+     border: '1px solid #A1A1A4',
+     borderRadius: '8px',
+     padding: '10px 12px 10px 28px',
+     color: '#A1A1A4',
+     width: '240px',
+     fontFamily: 'Space Grotesk',
+     fontSize: '7.7px',
+     lineHeight: '1.4',
+     pointerEvents: 'auto',
+     boxShadow: '12px 8px 32px rgba(0,0,0,0.5)'
+};
+
+const BACK_BUTTON_STYLE = {
+     position: 'absolute',
+     left: '8px',
+     top: '8px',
+     background: 'none',
+     border: 'none',
+     cursor: 'pointer',
+     padding: 0,
+     display: 'flex',
+     alignItems: 'center',
+     justifyContent: 'center'
+};
+
+const PANEL_TITLE_STYLE = { fontWeight: 'bold', marginBottom: '5px', color: '#0088cc', fontSize: '8.4px' };
+const PANEL_P_STYLE = { margin: '0 0 5px 0' };
+const PANEL_P_LAST_STYLE = { margin: '0' };
+
+// OPT: трансформы и args декоративных мешей подняты из JSX.
+const TORUS_SCALE = [0.15, 0.15, 0.03];
+const TORUS_ROTATION = [Math.PI / 2, 0, 0];
+const GLOW_POSITION = [0, -0.5, -45];
+const GLOW_ARGS = [18, 32];
+const RING_POSITION = [0, -0.5, -44];
+const RING_ARGS = [10, 10.3, 32];
+const FOG_ARGS = ['#031427', 10, 55];
+const BG_ARGS = ['#1a1a2e'];
+const DIR_LIGHT_POSITION = [5, 5, 5];
+const TEXT_POSITION = [-0.3, 5.9, -6.1];
+const TEXT_ROTATION = [0, 0, 0];
 
 
 const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blend, camera }) => {
@@ -324,24 +424,63 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
      const [cameraFocusId, setCameraFocusId] = useState(null);
      const controlsRef = useRef();
 
-     const handleModelClick = (id) => {
+     // OPT: useCallback — иначе новая функция на каждый рендер сбрасывала
+     // React.memo у всех InteractiveModel.
+     const handleModelClick = useCallback((id) => {
           setActiveId((prev) => (prev === id ? null : id));
           setCameraFocusId((prev) => (prev === id ? null : id));
-     };
+     }, []);
 
-     const handleBack = (e) => {
+     const handleBack = useCallback((e) => {
           e.stopPropagation();
           setActiveId(null);
           setCameraFocusId(null);
-     };
+     }, []);
 
      const activeModelData = useMemo(() => {
           return MODELS_DATA.find((m) => m.id === activeId);
      }, [activeId]);
 
-     // ease: 'inExpo',
-     function handleStartAnimation() {
-          if (animated) {
+     // OPT: позиции, зависящие от активной модели, мемоизированы —
+     // раньше это были новые массивы на каждый рендер.
+     const torusPosition = useMemo(() => {
+          if (!activeModelData) return null;
+          return [
+               activeModelData.position[0],
+               activeModelData.position[1] - 1.0,
+               activeModelData.position[2]
+          ];
+     }, [activeModelData]);
+
+     const htmlPosition = useMemo(() => {
+          if (!activeModelData) return null;
+          return [
+               activeModelData.position[0] + 1.2,
+               activeModelData.position[1] + 0.5,
+               activeModelData.position[2]
+          ];
+     }, [activeModelData]);
+
+     // -------------------------------------------------------------------------
+     // OPT / BUGFIX: раньше window.addEventListener('wheel', ...) вызывался
+     // прямо в теле рендера. Это добавляло НОВЫЙ слушатель на каждый рендер
+     // (функция каждый раз новая, поэтому дедупликация браузера не работала)
+     // и ни один из них не снимался при анмаунте.
+     // На первом же скролле срабатывали ВСЕ накопленные слушатели сразу:
+     // animate() запускался несколько раз на одном и том же объекте, а
+     // transition() вызывался столько же раз. Теперь эффект с очисткой
+     // плюс защита от повторного запуска — анимация стартует ровно один раз.
+     // -------------------------------------------------------------------------
+     const hasStartedRef = useRef(false);
+     const transitionTimeoutRef = useRef(null);
+
+     useEffect(() => {
+          if (!animated) return;
+
+          const handleStartAnimation = () => {
+               if (hasStartedRef.current) return;
+               hasStartedRef.current = true;
+
                orbitChange(false);
                animate(portalCamera.current.position, {
                     z: [10, -3],
@@ -350,7 +489,7 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                     alternate: true,
                     ease: 'inExpo',
                     onBegin: () => {
-                         setTimeout(() => {
+                         transitionTimeoutRef.current = setTimeout(() => {
                               blend(0);
                               camera(false);
                               orbitChange(false);
@@ -358,16 +497,25 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                          }, 2700);
                     },
                });
-          }
-     }
+          };
 
-     window.addEventListener('wheel', handleStartAnimation, { passive: true, once: true });
+          window.addEventListener('wheel', handleStartAnimation, { passive: true, once: true });
+          return () => window.removeEventListener('wheel', handleStartAnimation);
+     }, [animated, orbitChange, portalCamera, blend, camera, transition]);
+
+     // OPT: таймер снимается при анмаунте, чтобы не дёргать колбэки
+     // уже размонтированной сцены.
+     useEffect(() => {
+          return () => {
+               if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+          };
+     }, []);
 
      return (
           <>
                <ambientLight intensity={1.5} />
-               <directionalLight position={[5, 5, 5]} intensity={2} />
-               <color attach="background" args={['#1a1a2e']} />
+               <directionalLight position={DIR_LIGHT_POSITION} intensity={2} />
+               <color attach="background" args={BG_ARGS} />
 
                {MODELS_DATA.map((config) => (
                     <InteractiveModel
@@ -381,54 +529,21 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                {activeModelData && (
                     <>
                          <AnimatedTorus
-                              scale={[0.15, 0.15, 0.03]}
-                              position={[
-                                   activeModelData.position[0],
-                                   activeModelData.position[1] - 1.0,
-                                   activeModelData.position[2]
-                              ]}
-                              rotation={[Math.PI / 2, 0, 0]}
+                              scale={TORUS_SCALE}
+                              position={torusPosition}
+                              rotation={TORUS_ROTATION}
                          />
 
                          {orbit && (
                               <Html
-                                   position={[
-                                        activeModelData.position[0] + 1.2,
-                                        activeModelData.position[1] + 0.5,
-                                        activeModelData.position[2]
-                                   ]}
+                                   position={htmlPosition}
                                    center
                                    distanceFactor={10}
                               >
-                                   <div style={{
-                                        position: 'relative',
-                                        background: 'white',
-                                        backdropFilter: 'blur(8px)',
-                                        border: '1px solid #A1A1A4',
-                                        borderRadius: '8px',
-                                        padding: '10px 12px 10px 28px',
-                                        color: '#A1A1A4',
-                                        width: '240px',
-                                        fontFamily: 'Space Grotesk',
-                                        fontSize: '7.7px',
-                                        lineHeight: '1.4',
-                                        pointerEvents: 'auto',
-                                        boxShadow: '12px 8px 32px rgba(0,0,0,0.5)'
-                                   }}>
+                                   <div style={PANEL_STYLE}>
                                         <button
                                              onClick={handleBack}
-                                             style={{
-                                                  position: 'absolute',
-                                                  left: '8px',
-                                                  top: '8px',
-                                                  background: 'none',
-                                                  border: 'none',
-                                                  cursor: 'pointer',
-                                                  padding: 0,
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center'
-                                             }}
+                                             style={BACK_BUTTON_STYLE}
                                              title="Back"
                                         >
                                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0088cc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -436,16 +551,16 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                                                   <path d="M12 19l-7-7 7-7" />
                                              </svg>
                                         </button>
-                                        <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#0088cc', fontSize: '8.4px' }}>
+                                        <div style={PANEL_TITLE_STYLE}>
                                              {activeModelData.annotation.title}
                                         </div>
-                                        <p style={{ margin: '0 0 5px 0' }}>
+                                        <p style={PANEL_P_STYLE}>
                                              <strong>Material:</strong> {activeModelData.annotation.material}
                                         </p>
-                                        <p style={{ margin: '0 0 5px 0' }}>
+                                        <p style={PANEL_P_STYLE}>
                                              <strong>Construction type:</strong> {activeModelData.annotation.construction}
                                         </p>
-                                        <p style={{ margin: '0' }}>
+                                        <p style={PANEL_P_LAST_STYLE}>
                                              <strong>Load:</strong> {activeModelData.annotation.load}
                                         </p>
                                    </div>
@@ -459,8 +574,8 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                {orbit && <OrbitControls ref={controlsRef} />}
                <ConveyorBelt />
 
-               <mesh position={[0, -0.5, -45]}>
-                    <circleGeometry args={[18, 32]} />
+               <mesh position={GLOW_POSITION}>
+                    <circleGeometry args={GLOW_ARGS} />
                     <meshBasicMaterial
                          color="#0088cc"
                          transparent={true}
@@ -470,20 +585,26 @@ const LabScene = ({ orbit, animated, portalCamera, orbitChange, transition, blen
                     />
                </mesh>
 
-               <mesh position={[0, -0.5, -44]}>
-                    <ringGeometry args={[10, 10.3, 32]} />
+               <mesh position={RING_POSITION}>
+                    <ringGeometry args={RING_ARGS} />
                     <meshBasicMaterial color={'black'} transparent opacity={0.4} />
                </mesh>
-               <AnimatedText visible={animated} size={0.6} position={[-0.3, 5.9, -6.1]} text={'Scroll to next '} rotation={[0, 0, 0]} TextGap={0.48} />
+               <AnimatedText visible={animated} size={0.6} position={TEXT_POSITION} text={'Scroll to next '} rotation={TEXT_ROTATION} TextGap={0.48} />
 
-               <fog attach="fog" args={['#031427', 10, 55]} />
+               <fog attach="fog" args={FOG_ARGS} />
           </>
      );
 };
 export default LabScene;
 useFont.preload('/zb.json');
 
-export function PortalToSceneTwo({onTransitionComplete}) {
+// OPT: трансформы портала подняты из JSX.
+const PORTAL_MESH_POSITION = [1.393, 7.104, -10.86];
+const PORTAL_MESH_ROTATION = [0, -115 * (Math.PI / 180), 0];
+const PORTAL_CIRCLE_ARGS = [0.26, 64];
+const PORTAL_CAMERA_POSITION = [0, 0, 10];
+
+export function PortalToSceneTwo({ onTransitionComplete }) {
      const [blend, setBlend] = useState(0);
      const [cameraDefault, setCameraDefault] = useState(false);
      const [orbit, setOrbit] = useState(false);
@@ -491,20 +612,18 @@ export function PortalToSceneTwo({onTransitionComplete}) {
      const cameraRef = useRef();
      const [animateText, setAnimateText] = useState(false);
 
-     // const handlePointerOver = (e) => {
-     //      e.stopPropagation()
-     //      // document.body.style.cursor = 'pointer'
-     //
-     // }
-     //
-     // const handlePointerOut = () => {
-     //      // document.body.style.cursor = 'auto'
-     // }
-
      const isAnimating = useRef(false);
+     const textTimeoutRef = useRef(null);
 
-     const goToScene = () => {
+     // OPT: таймер снимается при анмаунте — иначе setAnimateText мог
+     // сработать уже после удаления компонента.
+     useEffect(() => {
+          return () => {
+               if (textTimeoutRef.current) clearTimeout(textTimeoutRef.current);
+          };
+     }, []);
 
+     const goToScene = useCallback(() => {
           if (isAnimating.current) return;
           isAnimating.current = true;
 
@@ -519,21 +638,19 @@ export function PortalToSceneTwo({onTransitionComplete}) {
                     setOrbit(true);
                     isAnimating.current = false;
 
-                    setTimeout(() => {
+                    textTimeoutRef.current = setTimeout(() => {
                          setAnimateText(true);
-                    },6000)
+                    }, 6000);
                },
           });
-     };
-
-
+     }, []);
 
      return (
-          <mesh ref={meshRef} position={[1.393, 7.104, -10.86]}  rotation={[0, -115 * (Math.PI / 180), 0]} onClick={goToScene} >
-               <circleGeometry args={[0.26, 64]} />
+          <mesh ref={meshRef} position={PORTAL_MESH_POSITION} rotation={PORTAL_MESH_ROTATION} onClick={goToScene} >
+               <circleGeometry args={PORTAL_CIRCLE_ARGS} />
                <MeshPortalMaterial blend={blend}>
-                    <PerspectiveCamera ref={cameraRef} makeDefault={cameraDefault} position={[0, 0, 10]} />
-                     <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText}   />
+                    <PerspectiveCamera ref={cameraRef} makeDefault={cameraDefault} position={PORTAL_CAMERA_POSITION} />
+                    <LabScene transition={onTransitionComplete} portalCamera={cameraRef} orbit={orbit} orbitChange={setOrbit} blend={setBlend} camera={setCameraDefault} animated={animateText} />
                </MeshPortalMaterial>
           </mesh>
      );

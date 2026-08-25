@@ -1,15 +1,39 @@
-import React, {useRef, useMemo, useState, useEffect} from 'react';
+import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
-import {Canvas, useFrame, useThree} from '@react-three/fiber';
-import SplineEditor from "../../CameraController.jsx";
-import {ScrollCameraPath} from "../../ViewportCanvas.jsx";
-import {PortalToSceneTwo} from "../Scene2/index.jsx";
-import {OrbitControls, PerspectiveCamera, useGLTF} from "@react-three/drei";
-import FlagText from "../Scene1/text.jsx";
+import { useFrame, useThree } from '@react-three/fiber';
+import { PerspectiveCamera, useGLTF } from "@react-three/drei";
 import ContactText from "./contact-text.jsx";
-import {MathUtils} from "three";
-import {ModelTruck} from "./Truck.jsx";
-import ShaderComponent from "../../PostProcessing.jsx";
+import { MathUtils } from "three";
+import { ModelTruck } from "./Truck.jsx";
+
+// Сцены GLTF кешируются глобально, поэтому конвертируем материалы один раз
+// и помечаем их флагом: повторный проход ничего не пересоздаёт
+const BASIC_MATERIAL_FLAG = '__dfwBasicMaterial';
+
+function toBasicMaterials(scene) {
+     scene.traverse((child) => {
+          if (!child.isMesh || !child.material || child.material[BASIC_MATERIAL_FLAG]) return;
+
+          const original = child.material;
+          // Заменяем материал на базовый (не требующий света)
+          const params = { map: original.map ?? null };   // Возвращаем текстуру модели
+          if (original.color) params.color = original.color;   // Сохраняем оригинальный цвет
+
+          const basic = new THREE.MeshBasicMaterial(params);
+          basic[BASIC_MATERIAL_FLAG] = true;
+          child.material = basic;
+          original.dispose();
+     });
+     return scene;
+}
+
+// Статичные трансформы камеры считаются один раз, а не на каждом рендере
+const CAMERA_POSITION = [-26.11, 13.51, 10.96];
+const CAMERA_ROTATION = [
+     MathUtils.degToRad(-45.8),
+     MathUtils.degToRad(-54.2),
+     MathUtils.degToRad(-39.9),
+];
 
 
 
@@ -41,10 +65,8 @@ export function CameraParallax({ intensity = 0.5, factor = 0.05 }) {
 }
 
 function SmartRectLight() {
-     const lightRef = useRef();
      return (
           <rectAreaLight
-               ref={lightRef}
                intensity={10}
                width={10}
                height={7}
@@ -57,11 +79,13 @@ function SmartRectLight() {
 export function CameraLogger() {
      const { camera } = useThree();
      const targetRef = useRef(new THREE.Vector3());
+     const lookAtRef = useRef(new THREE.Vector3());
 
      useFrame(() => {
           // 1. Вычисляем точку направления взгляда (LookAt)
           camera.getWorldDirection(targetRef.current);
-          const lookAtPoint = camera.position.clone().add(targetRef.current);
+          // Переиспользуем вектор вместо clone() на каждом кадре
+          const lookAtPoint = lookAtRef.current.copy(camera.position).add(targetRef.current);
 
           // 2. Переводим радианы поворота камеры в градусы
           const rotX = (camera.rotation.x * (180 / Math.PI)).toFixed(1);
@@ -84,21 +108,10 @@ function Model() {
      // Путь указывается от папки public
      const { scene } = useGLTF('model/Truck.glb');
 
-     // Проходим по всем полигонам модели и меняем их материалы
-     scene.traverse((child) => {
-          if (child.isMesh) {
-               // Сохраняем старую текстуру, если она была
-               const originalTexture = child.material.map;
+     // Проходим по всем полигонам модели и меняем их материалы (один раз, а не на каждом рендере)
+     useMemo(() => toBasicMaterials(scene), [scene]);
 
-               // Заменяем материал на базовый (не требующий света)
-               child.material = new THREE.MeshBasicMaterial({
-                    map: originalTexture,             // Возвращаем текстуру модели
-                    color: child.material.color,     // Сохраняем оригинальный цвет
-               });
-          }
-     });
-
-     return <primitive object={scene}  scale={15} position={[0, 2.9, 0]} rotation={[0,1,0]} />;
+     return <primitive object={scene} scale={15} position={[0, 2.9, 0]} rotation={[0, 1, 0]} />;
 }
 
 function ModelLetter() {
@@ -107,23 +120,19 @@ function ModelLetter() {
      // Стан для відстеження наведення
      const [hovered, setHovered] = useState(false);
 
-     // Проходимо по всіх полігонах моделі та змінюємо їхні матеріали
-     scene.traverse((child) => {
-          if (child.isMesh) {
-               // Зберігаємо стару текстуру, якщо вона була
-               const originalTexture = child.material.map;
+     // Матеріали конвертуються один раз. Раніше нові MeshBasicMaterial створювались
+     // на кожному рендері — тобто на кожному наведенні мишки — і текли в GPU
+     useMemo(() => toBasicMaterials(scene), [scene]);
 
-               // Замінюємо матеріал на базовий (який не потребує світла)
-               child.material = new THREE.MeshBasicMaterial({
-                    map: originalTexture,             // Повертаємо текстуру моделі
-                    color: child.material.color,     // Зберігаємо оригінальний колір
-               });
-          }
-     });
-     const handleModelClick = (e) => {
+     const handleModelClick = useCallback((e) => {
           e.stopPropagation(); // Запобігаємо кліку на об'єкти позаду моделі
           window.location.href = "mailto:info@doka.com";
-     };
+     }, []);
+     const handlePointerOver = useCallback((e) => {
+          e.stopPropagation(); // Зупиняємо проходження променя крізь модель
+          setHovered(true);
+     }, []);
+     const handlePointerOut = useCallback(() => setHovered(false), []);
      // Ефект для зміни курсора миші
      useEffect(() => {
           // Якщо навели — ставимо кастомний курсор, якщо прибрали — стандартний
@@ -142,13 +151,8 @@ function ModelLetter() {
                position={[-6, 0.0, 6]}
                rotation={[0, 1, 0]}
                // Події миші
-               onPointerOver={(e) => {
-                    e.stopPropagation(); // Зупиняємо проходження променя крізь модель
-                    setHovered(true);
-               }}
-               onPointerOut={(e) => {
-                    setHovered(false);
-               }}
+               onPointerOver={handlePointerOver}
+               onPointerOut={handlePointerOut}
                onClick={handleModelClick}
           />
      );
@@ -312,21 +316,17 @@ const ContactScene = () => {
      //
      // });
 
-     const rotX = MathUtils.degToRad(-45.8)
-     const rotY = MathUtils.degToRad(-54.2)
-     const rotZ = MathUtils.degToRad(-39.9)
-
      return (
-          <> return
+          <>
                <CameraParallax intensity={1} factor={0.05} />
                <group position={[6, 5, 12]} rotation={[-0.1, 4.9, 0]}>
                     <ContactText />
                </group>
-                    {/*<CameraLogger />*/}
+               {/*<CameraLogger />*/}
                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[14, 0, 0]}>
                     <planeGeometry args={[60, 60, 64, 64]} />
                     <shaderMaterial wireframe
-                                    ref={materialRef}
+                         ref={materialRef}
                          vertexShader={vertexShader}
                          fragmentShader={fragmentShader}
                          uniforms={uniforms}
@@ -341,8 +341,8 @@ const ContactScene = () => {
                />
                <PerspectiveCamera
                     makeDefault
-                    position={[-26.11, 13.51, 10.96]}
-                    rotation={[rotX, rotY, rotZ]}
+                    position={CAMERA_POSITION}
+                    rotation={CAMERA_ROTATION}
                />
           </>
 

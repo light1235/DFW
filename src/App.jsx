@@ -51,7 +51,7 @@ export default function App() {
         <fog attach="fog" args={['#1a1a1a', 15, 80]} />
            <SceneManager poster={setPoster} town={town} />
          <ShaderComponent />
-           {/*<Stats   />*/}
+           <Stats   />
       </Canvas>
 
       <main className="html-content">
