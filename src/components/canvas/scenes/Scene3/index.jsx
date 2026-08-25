@@ -1,4 +1,4 @@
-import React, {Suspense, useEffect, useMemo, useRef, useState} from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
      Center,
      Clone, Html,
@@ -10,14 +10,14 @@ import {
      useTexture
 } from "@react-three/drei";
 import * as THREE from "three";
-import {useFrame, useThree} from "@react-three/fiber";
-import {MathUtils} from "three";
+import { useFrame, useThree } from "@react-three/fiber";
+import { MathUtils } from "three";
 import { gsap } from 'gsap';
 import { animate } from 'animejs';
 import 'animejs/adapters/three';
 
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import {ModelFort} from "./model.jsx";
+import { ModelFort } from "./model.jsx";
 
 import FlagText from "../Scene1/text.jsx";
 import TowerText from "./towerText.jsx";
@@ -65,20 +65,33 @@ function LedLine({ position, rotation }) {
      )
 }
 
+// OPT / БЫЛА УТЕЧКА: раньше scene.traverse(...) стоял прямо в теле рендера.
+// Это значит, что на КАЖДОМ рендере для каждого меша создавался новый
+// MeshBasicMaterial, а предыдущий оставался висеть в памяти GPU.
+// Теперь это побочный эффект — один раз на сцену и с освобождением.
 function ModelHelmet() {
      // Путь указывается от папки public
      const { scene } = useGLTF('model/helmet.glb');
 
-     // Проходим по всем полигонам модели и меняем их материалы
-     scene.traverse((child) => {
-          if (child.isMesh) {
-               const originalTexture = child.material.map;
-               child.material = new THREE.MeshBasicMaterial({
-                    map: originalTexture,
+     useEffect(() => {
+          if (!scene) return;
+
+          const created = [];
+
+          scene.traverse((child) => {
+               if (!child.isMesh) return;
+
+               const material = new THREE.MeshBasicMaterial({
+                    map: child.material.map,
                     color: child.material.color,
                });
-          }
-     });
+
+               child.material = material;
+               created.push(material);
+          });
+
+          return () => created.forEach((material) => material.dispose());
+     }, [scene]);
 
      return (
           <primitive
@@ -95,346 +108,177 @@ function ModelHelmet() {
 // 202 одетая
 
 
-function ModelIndustrial() {
-     const { scene } = useGLTF('model/scene3/Industrial.glb');
+// OPT: главная правка файла. ModelIndustrial, ModelDamaged, ModelStairk и
+// ModelGrate были четырьмя копиями одного и того же кода — различались только
+// путём к модели, задержкой и трансформом. Логика проявления теперь одна:
+// правка в одном месте вместо четырёх синхронных.
+const REVEAL_OPS_SPEED = 0.006;
+
+function RevealModel({ url, delay, ...primitiveProps }) {
+     const { scene } = useGLTF(url);
      const alphaTexture = useTexture('model/scene3/d2.jpg');
 
      const materialsRef = useRef([]);
-     const opsSpeed = 0.006;
-
-     // НАСТРОЙКА ЗАДЕРЖКИ: в секундах (например, 2 секунды)
-     const delayTime = 3.1;
-
-     // Реф для хранения точного времени, когда модель загрузилась и материалы создались
+     // Точное время, когда модель загрузилась и материалы создались
      const startTimeRef = useRef(null);
 
      useEffect(() => {
           if (!scene) return;
 
-          materialsRef.current = [];
+          const created = [];
 
           scene.traverse((child) => {
-               if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
+               if (!child.isMesh) return;
 
-                    const originalTexture = child.material.map;
-                    const originalColor = child.material.color;
+               child.castShadow = true;
+               child.receiveShadow = true;
 
-                    const customMaterial = new THREE.MeshBasicMaterial({
-                         map: originalTexture,
-                         color: originalColor,
-                         side: THREE.DoubleSide,
-                         alphaMap: alphaTexture,
-                         alphaTest: 1.0, // Исходное состояние (полностью скрыто/прозрачно)
-                    });
+               const customMaterial = new THREE.MeshBasicMaterial({
+                    map: child.material.map,
+                    color: child.material.color,
+                    side: THREE.DoubleSide,
+                    alphaMap: alphaTexture,
+                    alphaTest: 1.0, // Исходное состояние (полностью скрыто/прозрачно)
+               });
 
-                    child.material = customMaterial;
-                    materialsRef.current.push(customMaterial);
-               }
+               child.material = customMaterial;
+               created.push(customMaterial);
           });
 
+          materialsRef.current = created;
           startTimeRef.current = null;
 
+          // OPT: раньше созданные материалы не освобождались вообще
+          return () => {
+               created.forEach((material) => material.dispose());
+               materialsRef.current = [];
+          };
      }, [scene, alphaTexture]);
 
      useFrame((state) => {
-          // Если модель еще не загружена или массив пуст — выходим
-          if (materialsRef.current.length === 0) return;
+          const materials = materialsRef.current;
 
-          // Инициализируем точку отсчета при первом кадре после загрузки модели
+          // Модель ещё не загружена либо проявление уже закончилось
+          if (materials.length === 0) return;
+
+          // Инициализируем точку отсчёта при первом кадре после загрузки модели
           if (startTimeRef.current === null) {
                startTimeRef.current = state.clock.getElapsedTime();
           }
 
-          // Считаем, сколько секунд прошло КОНКРЕТНО с момента появления модели
-          const timePassedSinceLoad = state.clock.getElapsedTime() - startTimeRef.current;
-
-          // Если время ожидания еще не прошло — блокируем выполнение анимации
-          if (timePassedSinceLoad < delayTime) return;
+          // Считаем время КОНКРЕТНО с момента появления модели, а не с запуска страницы
+          if (state.clock.getElapsedTime() - startTimeRef.current < delay) return;
 
           // Анимация проявления
           let hasUpdates = false;
-          materialsRef.current.forEach((material) => {
-               if (material.alphaTest > 0) {
-                    material.alphaTest -= opsSpeed;
-                    material.needsUpdate = true;
-                    hasUpdates = true;
-               }
-          });
 
-          // Оптимизация: если все материалы полностью проявились, очищаем массив,
-          // чтобы useFrame больше не крутил пустой цикл каждую секунду
+          for (let i = 0; i < materials.length; i++) {
+               const material = materials[i];
+               if (material.alphaTest <= 0) continue;
+
+               const next = material.alphaTest - REVEAL_OPS_SPEED;
+               hasUpdates = true;
+
+               if (next > 0) {
+                    // OPT: здесь стоял needsUpdate = true на каждом кадре — то есть
+                    // пересборка шейдерной программы ~170 раз за одно проявление,
+                    // и это на каждый материал каждой из четырёх моделей.
+                    // В three r179 alphaTest — обычный uniform (см. WebGLMaterials.js),
+                    // он уезжает на GPU сам. В ключ программы входит только факт
+                    // «alphaTest > 0», поэтому флаг нужен ровно один раз — на нуле.
+                    material.alphaTest = next;
+               } else {
+                    material.alphaTest = 0;
+                    material.needsUpdate = true;
+               }
+          }
+
+          // Если все материалы полностью проявились, очищаем массив,
+          // чтобы useFrame больше не крутил пустой цикл каждый кадр
           if (!hasUpdates) {
                materialsRef.current = [];
           }
      });
 
-     return <primitive object={scene} scale={10} position={[210, 193.4, 25]} rotation={[0, 1.2, 0]} />;
+     return <primitive object={scene} {...primitiveProps} />;
+}
+
+function ModelIndustrial() {
+     return (
+          <RevealModel
+               url="model/scene3/Industrial.glb"
+               delay={3.1}
+               scale={10}
+               position={[210, 193.4, 25]}
+               rotation={[0, 1.2, 0]}
+          />
+     );
 }
 
 function ModelDamaged() {
-     // Путь указывается от папки public
-     const { scene } = useGLTF('model/scene3/Damaged- Concrete.glb');
-
-     // Проходим по всем полигонам модели и меняем их материалы
-     const alphaTexture = useTexture(
-          'model/scene3/d2.jpg'
+     return (
+          <RevealModel
+               url="model/scene3/Damaged- Concrete.glb"
+               delay={0.1}
+               scale={[15, 15, 15]}
+               position={[175, 195.4, -10]}
+               rotation={[0, 1, 0]}
+          />
      );
-     const materialsRef = useRef([]);
-     const opsSpeed = 0.006;
-
-     const delayTime = 0.1;
-
-     // Реф для хранения точного времени, когда модель загрузилась и материалы создались
-     const startTimeRef = useRef(null);
-
-     useEffect(() => {
-          if (!scene) return;
-
-          materialsRef.current = [];
-
-          scene.traverse((child) => {
-               if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-
-                    const originalTexture = child.material.map;
-                    const originalColor = child.material.color;
-
-                    const customMaterial = new THREE.MeshBasicMaterial({
-                         map: originalTexture,
-                         color: originalColor,
-                         side: THREE.DoubleSide,
-                         alphaMap: alphaTexture,
-                         alphaTest: 1.0, // Исходное состояние (полностью скрыто/прозрачно)
-                    });
-
-                    child.material = customMaterial;
-                    materialsRef.current.push(customMaterial);
-               }
-          });
-
-          startTimeRef.current = null;
-
-     }, [scene, alphaTexture]);
-
-     useFrame((state) => {
-          // Если модель еще не загружена или массив пуст — выходим
-          if (materialsRef.current.length === 0) return;
-
-          // Инициализируем точку отсчета при первом кадре после загрузки модели
-          if (startTimeRef.current === null) {
-               startTimeRef.current = state.clock.getElapsedTime();
-          }
-
-          // Считаем, сколько секунд прошло КОНКРЕТНО с момента появления модели
-          const timePassedSinceLoad = state.clock.getElapsedTime() - startTimeRef.current;
-
-          // Если время ожидания еще не прошло — блокируем выполнение анимации
-          if (timePassedSinceLoad < delayTime) return;
-
-          // Анимация проявления
-          let hasUpdates = false;
-          materialsRef.current.forEach((material) => {
-               if (material.alphaTest > 0) {
-                    material.alphaTest -= opsSpeed;
-                    material.needsUpdate = true;
-                    hasUpdates = true;
-               }
-          });
-
-          // Оптимизация: если все материалы полностью проявились, очищаем массив,
-          // чтобы useFrame больше не крутил пустой цикл каждую секунду
-          if (!hasUpdates) {
-               materialsRef.current = [];
-          }
-     });
-
-     return <primitive object={scene}  scale={[15,15,15]} position={[175, 195.4, -10]} rotation={[0,1,0]} />;
 }
 
 function ModelStairk() {
-     // Путь указывается от папки public
-     const { scene } = useGLTF('model/scene3/Stairk.glb');
-
-     const alphaTexture = useTexture(
-          'model/scene3/d2.jpg'
+     return (
+          <RevealModel
+               url="model/scene3/Stairk.glb"
+               delay={2.0}
+               scale={11}
+               position={[212, 195.7, 12]}
+               rotation={[0, 6, 0]}
+          />
      );
-     const materialsRef = useRef([]);
-     const opsSpeed = 0.006;
-
-     const delayTime = 2.0;
-
-     // Реф для хранения точного времени, когда модель загрузилась и материалы создались
-     const startTimeRef = useRef(null);
-
-     useEffect(() => {
-          if (!scene) return;
-
-          materialsRef.current = [];
-
-          scene.traverse((child) => {
-               if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-
-                    const originalTexture = child.material.map;
-                    const originalColor = child.material.color;
-
-                    const customMaterial = new THREE.MeshBasicMaterial({
-                         map: originalTexture,
-                         color: originalColor,
-                         side: THREE.DoubleSide,
-                         alphaMap: alphaTexture,
-                         alphaTest: 1.0, // Исходное состояние (полностью скрыто/прозрачно)
-                    });
-
-                    child.material = customMaterial;
-                    materialsRef.current.push(customMaterial);
-               }
-          });
-
-          startTimeRef.current = null;
-
-     }, [scene, alphaTexture]);
-
-     useFrame((state) => {
-          // Если модель еще не загружена или массив пуст — выходим
-          if (materialsRef.current.length === 0) return;
-
-          // Инициализируем точку отсчета при первом кадре после загрузки модели
-          if (startTimeRef.current === null) {
-               startTimeRef.current = state.clock.getElapsedTime();
-          }
-
-          // Считаем, сколько секунд прошло КОНКРЕТНО с момента появления модели
-          const timePassedSinceLoad = state.clock.getElapsedTime() - startTimeRef.current;
-
-          // Если время ожидания еще не прошло — блокируем выполнение анимации
-          if (timePassedSinceLoad < delayTime) return;
-
-          // Анимация проявления
-          let hasUpdates = false;
-          materialsRef.current.forEach((material) => {
-               if (material.alphaTest > 0) {
-                    material.alphaTest -= opsSpeed;
-                    material.needsUpdate = true;
-                    hasUpdates = true;
-               }
-          });
-
-          // Оптимизация: если все материалы полностью проявились, очищаем массив,
-          // чтобы useFrame больше не крутил пустой цикл каждую секунду
-          if (!hasUpdates) {
-               materialsRef.current = [];
-          }
-     });
-
-     return <primitive object={scene}  scale={11} position={[212, 195.7, 12]} rotation={[0,6,0]} />;
 }
 
 function ModelGrate() {
-     // Путь указывается от папки public
-     const { scene } = useGLTF('model/scene3/Grate.glb');
-     const alphaTexture = useTexture(
-          'model/scene3/d2.jpg'
+     return (
+          <RevealModel
+               url="model/scene3/Grate.glb"
+               delay={1.0}
+               scale={19}
+               position={[191, 197.4, -15]}
+               rotation={[0, 1, 0]}
+          />
      );
-
-     const materialsRef = useRef([]);
-     const opsSpeed = 0.006;
-
-     const delayTime = 1.0;
-
-     // Реф для хранения точного времени, когда модель загрузилась и материалы создались
-     const startTimeRef = useRef(null);
-
-     useEffect(() => {
-          if (!scene) return;
-
-          materialsRef.current = [];
-
-          scene.traverse((child) => {
-               if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-
-                    const originalTexture = child.material.map;
-                    const originalColor = child.material.color;
-
-                    const customMaterial = new THREE.MeshBasicMaterial({
-                         map: originalTexture,
-                         color: originalColor,
-                         side: THREE.DoubleSide,
-                         alphaMap: alphaTexture,
-                         alphaTest: 1.0, // Исходное состояние (полностью скрыто/прозрачно)
-                    });
-
-                    child.material = customMaterial;
-                    materialsRef.current.push(customMaterial);
-               }
-          });
-
-          startTimeRef.current = null;
-
-     }, [scene, alphaTexture]);
-
-     useFrame((state) => {
-          // Если модель еще не загружена или массив пуст — выходим
-          if (materialsRef.current.length === 0) return;
-
-          // Инициализируем точку отсчета при первом кадре после загрузки модели
-          if (startTimeRef.current === null) {
-               startTimeRef.current = state.clock.getElapsedTime();
-          }
-
-          // Считаем, сколько секунд прошло КОНКРЕТНО с момента появления модели
-          const timePassedSinceLoad = state.clock.getElapsedTime() - startTimeRef.current;
-
-          // Если время ожидания еще не прошло — блокируем выполнение анимации
-          if (timePassedSinceLoad < delayTime) return;
-
-          // Анимация проявления
-          let hasUpdates = false;
-          materialsRef.current.forEach((material) => {
-               if (material.alphaTest > 0) {
-                    material.alphaTest -= opsSpeed;
-                    material.needsUpdate = true;
-                    hasUpdates = true;
-               }
-          });
-
-          // Оптимизация: если все материалы полностью проявились, очищаем массив,
-          // чтобы useFrame больше не крутил пустой цикл каждую секунду
-          if (!hasUpdates) {
-               materialsRef.current = [];
-          }
-     });
-
-     return <primitive object={scene}  scale={19} position={[191, 197.4, -15]} rotation={[0,1,0]} />;
 }
 
-
-
+// OPT / БЫЛА УТЕЧКА: как и в ModelHelmet, traverse стоял в теле рендера и
+// плодил новый MeshStandardMaterial на каждый рендер. Перенесено в эффект.
 function ModelBox() {
      // Путь указывается от папки public
      const { scene } = useGLTF('model/scene3/scene-box.glb');
 
-     // Проходим по всем полигонам модели и меняем их материалы
-     scene.traverse((child) => {
-          if (child.isMesh) {
-               // Сохраняем старую текстуру, если она была
-               const originalTexture = child.material.map;
-               // MeshStandardMaterial
-               // Заменяем материал на базовый (не требующий света)
-               child.material = new THREE.MeshStandardMaterial({
-                    map: originalTexture,             // Возвращаем текстуру модели
-                    color: child.material.color,     // Сохраняем оригинальный цвет
-               });
-          }
-     });
+     useEffect(() => {
+          if (!scene) return;
 
-     return <primitive object={scene}  scale={[20,17,30]} position={[200, 202.9, 0]} rotation={[0,1,0]} />;
+          const created = [];
+
+          scene.traverse((child) => {
+               if (!child.isMesh) return;
+
+               // Заменяем материал, сохраняя текстуру и цвет из модели
+               const material = new THREE.MeshStandardMaterial({
+                    map: child.material.map,
+                    color: child.material.color,
+               });
+
+               child.material = material;
+               created.push(material);
+          });
+
+          return () => created.forEach((material) => material.dispose());
+     }, [scene]);
+
+     return <primitive object={scene} scale={[20, 17, 30]} position={[200, 202.9, 0]} rotation={[0, 1, 0]} />;
 }
 export function CameraLogger() {
      const { camera } = useThree();
@@ -464,11 +308,11 @@ export function CameraLogger() {
 useGLTF.preload('model/scene3/scene-box.glb')
 
 
-export function AnimatedText({ text = "Scroll to explore    ", visible = false,size, position=[183.0, 202.77, 24.08],rotation = [
+export function AnimatedText({ text = "Scroll to explore    ", visible = false, size, position = [183.0, 202.77, 24.08], rotation = [
      MathUtils.degToRad(0.5),
      MathUtils.degToRad(-41.6),
      MathUtils.degToRad(0.4)
-], TextGap = 0.38 } ) {
+], TextGap = 0.38 }) {
      const groupRef = useRef();
      const lettersRef = useRef([]);
      const fontPath = "/zb.json";
@@ -573,12 +417,12 @@ export function AnimatedText({ text = "Scroll to explore    ", visible = false,s
 
 
 export function OpenDoor({
-                              initialOpen = false,      // Статус приоткрытости по умолчанию
-                              openAngle = 0.45,        // Угол открытия в радианах (~25-30 градусов)
-                              position = [0, 0, 0],
-                              scale = 1,
-     rotation,enter
-                         }) {
+     initialOpen = false,      // Статус приоткрытости по умолчанию
+     openAngle = 0.45,        // Угол открытия в радианах (~25-30 градусов)
+     position = [0, 0, 0],
+     scale = 1,
+     rotation, enter
+}) {
      const [isOpen, setIsOpen] = useState(initialOpen);
      const [hovered, setHovered] = useState(false);
      const hingeRef = useRef();
@@ -655,15 +499,15 @@ export function OpenDoor({
                               animate(
                                    camera.position,
                                    {
-                                        x:[217,224],
-                                        z:[-16.70,-18],
+                                        x: [217, 224],
+                                        z: [-16.70, -18],
                                         duration: 2000,
-                                        delay:500,
+                                        delay: 500,
                                         ease: 'inOutCubic',
                                         onBegin: () => {
                                              setTimeout(() => {
                                                   enter()
-                                             },1150)
+                                             }, 1150)
                                         },
                                    }
                               );
@@ -698,9 +542,9 @@ export function OpenDoor({
 }
 
 const curve = new THREE.CatmullRomCurve3([
-     new THREE.Vector3( 178.610, 199.770, 29.080 ),
-     new THREE.Vector3( 195.557, 200.564, 1.814 ),
-     new THREE.Vector3( 217.737, 198.714, -16.704 ) // Конец на 198.714
+     new THREE.Vector3(178.610, 199.770, 29.080),
+     new THREE.Vector3(195.557, 200.564, 1.814),
+     new THREE.Vector3(217.737, 198.714, -16.704) // Конец на 198.714
 ], false, 'catmullrom', 0.50);
 
 function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
@@ -830,7 +674,7 @@ function HelmetController({ scroll, destroy, monolith, PitScene, activeText }) {
 }
 
 // Главный экспорт компонента шлема
-export function AnimatedHelmet({scroll,destroy,monolith,PitScene,activeText}) {
+export function AnimatedHelmet({ scroll, destroy, monolith, PitScene, activeText }) {
      return (
 
           <Suspense fallback={null}>
@@ -839,7 +683,7 @@ export function AnimatedHelmet({scroll,destroy,monolith,PitScene,activeText}) {
      );
 }
 
-const ExcavationPitScene = ({monolith, PitScene}) => {
+const ExcavationPitScene = ({ monolith, PitScene }) => {
 
      const [scrollText, setScrollText] = useState(false);
      const [helmAnimation, setHelmAnimation] = useState(false);
@@ -871,7 +715,7 @@ const ExcavationPitScene = ({monolith, PitScene}) => {
 
      return (
           <>
-               <PerspectiveCamera makeDefault={true} position={[178.61, 199.77, 29.08]} fov={70} far={10000}  rotation={[rotX, rotY, rotZ]} />
+               <PerspectiveCamera makeDefault={true} position={[178.61, 199.77, 29.08]} fov={70} far={10000} rotation={[rotX, rotY, rotZ]} />
                {/*<OrthographicCamera makeDefault position={[0, 0, 100]} zoom={1} />*/}
                <ambientLight intensity={2.6} />
                <directionalLight
@@ -913,14 +757,14 @@ const ExcavationPitScene = ({monolith, PitScene}) => {
                <ModelGrate />
                <ModelDamaged />
 
-               <AnimatedText visible={scrollText}  size={0.5} />
-               {helmAnimation &&  <AnimatedHelmet activeText={setActivePortalText} PitScene={PitScene} monolith={monolith} scroll={setScrollText} destroy={setDestroy} />}
+               <AnimatedText visible={scrollText} size={0.5} />
+               {helmAnimation && <AnimatedHelmet activeText={setActivePortalText} PitScene={PitScene} monolith={monolith} scroll={setScrollText} destroy={setDestroy} />}
 
-               <group visible={activePortalText}  position={[228.61, 198.77, -22.08]} rotation={[0, 3.4 + Math.PI / 2, 0]}>
-                     <TowerText active={true} />
+               <group visible={activePortalText} position={[228.61, 198.77, -22.08]} rotation={[0, 3.4 + Math.PI / 2, 0]}>
+                    <TowerText active={true} />
                </group>
-               <OpenDoor enter={enterToPortal}  position={[238.61, 194.77, -20.08]}
-                          rotation={[0,3.4+ Math.PI / 2, 0]} openAngle={0.6} scale={2.6} />
+               <OpenDoor enter={enterToPortal} position={[238.61, 194.77, -20.08]}
+                    rotation={[0, 3.4 + Math.PI / 2, 0]} openAngle={0.6} scale={2.6} />
                <LedLine position={[241.2, 212, 15]} rotation={[0, 2.6, 0]} />
                <LedLine position={[173, 212, -38]} rotation={[0, 2.6, 0]} />
                {/*<CameraLogger />*/}
